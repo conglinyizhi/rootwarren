@@ -155,6 +155,16 @@ GET /frontend.js
 
 The client implementation brief is in [`docs/CLIENT.md`](CLIENT.md).
 
+### Startup Bootstrap URL
+
+Each server start generates one random bootstrap URL printed only in the console:
+
+```text
+http://127.0.0.1:8001/?api_key=mk_...
+```
+
+The first request to that URL exchanges the key for an HttpOnly `mbt_session` cookie and returns `302 Location: /`. The bootstrap key is held only in process memory, is invalid after one exchange, and is not stored in `meta/api_keys.json`. The session expires when the server process stops. A normal API key still uses `Authorization: Bearer <key>`.
+
 ## Public Browser View
 
 ```http

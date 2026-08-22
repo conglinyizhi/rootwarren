@@ -2,13 +2,17 @@
 package "conglinyizhi/mbt-mdwiki"
 
 // Values
-pub fn generate_api_key() -> String
+pub fn generate_api_key() -> String raise EntropyUnavailable
 
 pub fn hash_api_key(String) -> String
 
 pub fn valid_slug(String) -> Bool
 
 // Errors
+pub(all) suberror EntropyUnavailable {
+  EntropyUnavailable
+}
+
 pub(all) suberror StorageError {
   InvalidSlug(String)
 }

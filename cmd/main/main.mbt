@@ -1,21 +1,37 @@
 ///|
+struct StartupSession {
+  bootstrap_key : String
+  session_token : String
+  mut consumed : Bool
+}
+
+///|
 async fn main {
   let storage = @lib.LocalStorage::new("content")
   let meta = @lib.JsonMeta::open("meta")
+  let startup_key = @lib.generate_api_key()
+  let startup_session = {
+    bootstrap_key: startup_key,
+    session_token: @lib.generate_api_key(),
+    consumed: false,
+  }
   let port = match @env.get_env_var("PORT") {
     Some(p) => p
     None => "8001"
   }
   let server = @http.Server(@socket.Addr::parse("0.0.0.0:" + port))
   println("mbt-mdwiki listening on http://127.0.0.1:\{port}")
-  println("client: http://127.0.0.1:\{port}/")
-  println("public docs: http://127.0.0.1:\{port}/d/index")
+  println("客户端 Key（本次启动仅显示一次）：\{startup_key}")
+  println(
+    "客户端地址（打开后会自动隐藏 Key）：http://127.0.0.1:\{port}/?api_key=\{startup_key}",
+  )
+  println("文档首页：http://127.0.0.1:\{port}/d/index")
   println(
     "admin login: http://127.0.0.1:\{port}/admin/login (requires ADMIN_TOKEN)",
   )
   println("REST API: http://127.0.0.1:\{port}/api/v1/docs")
   server.run_forever() <| ((request, body, conn) => {
-    handle(request, body, conn, storage, meta)
+    handle(request, body, conn, storage, meta, startup_session)
   })
 }
 
@@ -90,15 +106,39 @@ async fn handle(
   conn : @http.ServerConnection,
   storage : @lib.LocalStorage,
   meta : @lib.JsonMeta,
+  startup_session : StartupSession,
 ) -> Unit {
   let path = request.path
   if request.meth is Get && path == "/health" {
     respond(conn, 200, "text/plain", "ok")
     return
   }
-  if request.meth is Get && path == "/" {
-    serve_static_file(conn, "frontend/index.html", "text/html; charset=utf-8")
-    return
+  if request.meth is Get {
+    let (clean_path, query) = split_query(path)
+    if clean_path == "/" {
+      match query_param(query, "api_key") {
+        Some(key) if key == startup_session.bootstrap_key &&
+          !startup_session.consumed => {
+          startup_session.consumed = true
+          respond_with_headers(
+            conn,
+            302,
+            "Found",
+            "text/plain",
+            "正在进入文档站……",
+            {
+              "Location": "/",
+              "Set-Cookie": "mbt_session=\{startup_session.session_token}; Path=/; HttpOnly; SameSite=Lax",
+            },
+          )
+        }
+        _ =>
+          serve_static_file(
+            conn, "frontend/index.html", "text/html; charset=utf-8",
+          )
+      }
+      return
+    }
   }
   if request.meth is Get && path == "/frontend.js" {
     serve_static_file(
@@ -107,7 +147,7 @@ async fn handle(
     return
   }
   if path.has_prefix("/api/v1/") {
-    handle_api(request, body, conn, storage, meta)
+    handle_api(request, body, conn, storage, meta, startup_session)
     return
   }
   if path.has_prefix("/admin") {
@@ -128,11 +168,17 @@ async fn handle_api(
   conn : @http.ServerConnection,
   storage : @lib.LocalStorage,
   meta : @lib.JsonMeta,
+  startup_session : StartupSession,
 ) -> Unit {
-  // 鉴权
+  // 鉴权：优先 Bearer；启动链接兑换到的进程内会话只在本次服务运行中有效。
   let scopes = match extract_bearer(request) {
     Some(key) => meta.verify_api_key(key)
-    None => None
+    None =>
+      match extract_cookie(request, "mbt_session") {
+        Some(token) if token == startup_session.session_token =>
+          Some("read,write")
+        _ => None
+      }
   }
   let scopes = match scopes {
     Some(s) => s
@@ -216,7 +262,25 @@ fn extract_bearer(request : @http.Request) -> String? {
   for k, v in request.headers {
     if k == "authorization" || k == "Authorization" {
       if v.has_prefix("Bearer ") {
-        return Some(v["Bearer ".length():].to_owned())
+        let key = v["Bearer ".length():].to_owned()
+        if !key.is_empty() {
+          return Some(key)
+        }
+      }
+    }
+  }
+  None
+}
+
+///|
+fn extract_cookie(request : @http.Request, name : String) -> String? {
+  for k, v in request.headers {
+    if k == "cookie" || k == "Cookie" {
+      for item in v.split(";") {
+        let item = item.trim()
+        if item.has_prefix(name + "=") {
+          return Some(item[name.length() + 1:].to_owned())
+        }
       }
     }
   }

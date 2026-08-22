@@ -31,7 +31,7 @@ make check
 PORT=8001 ADMIN_TOKEN=replace-me make run
 ```
 
-`make run` builds the MoonBit JS client first, then starts the native server. The startup log prints the client URL (`/`), public document URL (`/d/index`), admin URL, and REST API URL. Use `make build-frontend` when only the browser bundle is needed.
+`make run` builds the MoonBit JS client first, then starts the native server. The startup log prints one entropy-generated, single-use bootstrap URL in the form `/?api_key=...`; opening it exchanges the key for an HttpOnly, in-process session cookie and redirects to `/`, removing the key from the address bar. The log also prints the public document URL (`/d/index`), admin URL, and REST API URL. Use `make build-frontend` when only the browser bundle is needed.
 
 - `PORT` defaults to `8001`.
 - `ADMIN_TOKEN` is required for `/admin/*`; do not leave it unset in a public deployment.

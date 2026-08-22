@@ -9,13 +9,16 @@ pub fn hash_api_key(key : String) -> String {
 }
 
 ///|
-/// 生成随机 API key：`mk_` 前缀 + 32 位 base62 字符
-pub fn generate_api_key() -> String {
-  let rand = @random.Rand::chacha8()
-  let chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-  let sb = StringBuilder()
-  for _i in 0..<32 {
-    sb.write_char(chars.get_char(rand.int(limit=chars.length())).unwrap())
+pub(all) suberror EntropyUnavailable {
+  EntropyUnavailable
+}
+
+///|
+/// 生成随机 API key：`mk_` 前缀 + 平台熵源生成的 32 字节 hex。
+/// 熵源不可用时失败，绝不回退到可预测的伪随机种子。
+pub fn generate_api_key() -> String raise EntropyUnavailable {
+  match @env.rand(32) {
+    Some(bytes) => "mk_" + @crypto.bytes_to_hex_string(bytes)
+    None => raise EntropyUnavailable::EntropyUnavailable
   }
-  "mk_" + sb.to_string()
 }
