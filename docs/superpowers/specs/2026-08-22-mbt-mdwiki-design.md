@@ -163,6 +163,7 @@ trait Storage {
 ## 11. 非目标（Out of Scope）
 
 - MCP Server：切掉，客户端自行封装。
+- 第三方登录（OAuth）：进 backlog，站点公开运营、多管理员时再做（phase 2）。
 - 向量搜索：phase 2，MVP 不涉及嵌入模型。
 - 多用户 / 团队权限：MVP 单管理员 + API key scope。
 - 在线 Markdown 编辑器：MVP 不做（内容靠文件/git/API 写入）。
