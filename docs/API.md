@@ -171,7 +171,12 @@ The first request to that URL exchanges the key for an HttpOnly `mbt_session` co
 GET /d/{slug}
 ```
 
-Public. Reads the same Markdown source as the API and renders HTML through CommonMark. Raw HTML from Markdown is rendered in safe mode.
+The admin setting `site.public` controls anonymous reading:
+
+- `true` or unset: anonymous users can read rendered Markdown.
+- `false`: anonymous users receive `403`; an admin or client session can still read.
+
+The home page follows the same rule. In public mode it renders `content/index.md`; in private mode it requires a session. The page reads the same Markdown source as the API and renders HTML through CommonMark. Raw HTML from Markdown is rendered in safe mode. Relative Markdown links are intended to point to other Wiki pages.
 
 ```sh
 xdg-open http://127.0.0.1:8001/d/index

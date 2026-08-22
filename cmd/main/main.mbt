@@ -148,10 +148,23 @@ async fn handle(
             },
           )
         }
-        _ =>
-          serve_static_file(
-            conn, "frontend/index.html", "text/html; charset=utf-8",
-          )
+        _ => {
+          let public = site_is_public(meta)
+          if public ||
+            session_authenticated(request, startup_session, admin_session) {
+            if session_authenticated(request, startup_session, admin_session) {
+              serve_static_file(
+                conn, "frontend/index.html", "text/html; charset=utf-8",
+              )
+            } else {
+              render_doc_page_by_slug(conn, storage, "index")
+            }
+          } else {
+            respond_error(
+              conn, 403, "site is private; use the admin bootstrap URL",
+            )
+          }
+        }
       }
       return
     }
@@ -171,7 +184,12 @@ async fn handle(
     return
   }
   if request.meth is Get && path.has_prefix("/d/") {
-    render_doc_page(request, conn, storage)
+    if site_is_public(meta) ||
+      session_authenticated(request, startup_session, admin_session) {
+      render_doc_page(request, conn, storage)
+    } else {
+      respond_error(conn, 403, "site is private; use the admin bootstrap URL")
+    }
     return
   }
   respond(conn, 404, "text/plain", "Not Found")
@@ -391,14 +409,21 @@ async fn handle_admin(
         scopes
       },
     )
-    admin_keys_page_with_notice(conn, meta, "created key: " + key)
+    admin_keys_page_with_notice(conn, meta, "已创建访问密钥：" + key)
     return
   }
   if request.meth is Post && clean_path == "/admin/keys/revoke" {
     let form = @utf8.decode_lossy(body.read_all().binary()[:])
     let id = parse_nonnegative_int(form_value(form, "id"))
     meta.revoke_api_key(id)
-    admin_keys_page_with_notice(conn, meta, "key revoked")
+    admin_keys_page_with_notice(conn, meta, "密钥已吊销")
+    return
+  }
+  if request.meth is Post && clean_path == "/admin/site" {
+    let form = @utf8.decode_lossy(body.read_all().binary()[:])
+    let public = form_value(form, "public") == "true"
+    meta.set_config("site.public", if public { "true" } else { "false" })
+    admin_keys_page_with_notice(conn, meta, "网站公开设置已保存")
     return
   }
   respond(conn, 404, "text/plain", "Not Found")
@@ -478,6 +503,7 @@ async fn admin_keys_page_with_notice(
   notice : String,
 ) -> Unit {
   let rows = StringBuilder()
+  let public = site_is_public(meta)
   for key in meta.list_api_keys() {
     rows.write_string("<li>#")
     rows.write_string(key.id.to_string())
@@ -491,12 +517,38 @@ async fn admin_keys_page_with_notice(
     rows.write_string(key.id.to_string())
     rows.write_string("\"><button>Revoke</button></form></li>")
   }
-  let page = "<!doctype html><html><body><h1>API keys</h1><p>" +
+  let page = "<!doctype html><html lang=\"zh-CN\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>后台管理 - mbt-mdwiki</title><style>body{font-family:sans-serif;max-width:860px;margin:40px auto;padding:0 20px;color:#24352a}button{padding:6px 10px}section{border:1px solid #ccd8cc;padding:16px;margin:16px 0}li{margin:8px 0}</style></head><body><h1>mbt-mdwiki 后台管理</h1><p>" +
     notice +
-    "</p><ul>" +
+    "</p><section><h2>网站访问</h2><p>当前状态：" +
+    (if public { "公开浏览" } else { "仅登录可见" }) +
+    "</p><form method=\"post\" action=\"/admin/site\"><label><input type=\"radio\" name=\"public\" value=\"true\"" +
+    (if public { " checked" } else { "" }) +
+    "> 允许未登录用户阅读文档</label><br><label><input type=\"radio\" name=\"public\" value=\"false\"" +
+    (if !public { " checked" } else { "" }) +
+    "> 仅登录后允许阅读</label><br><button>保存网站访问设置</button></form></section><section><h2>访问密钥</h2><ul>" +
     rows.to_string() +
-    "</ul><h2>Create key</h2><form method=\"post\" action=\"/admin/keys\"><input name=\"name\" placeholder=\"name\"><select name=\"scopes\"><option value=\"read\">read</option><option value=\"read,write\">read,write</option></select><button>Create</button></form></body></html>"
+    "</ul><h3>创建新密钥</h3><form method=\"post\" action=\"/admin/keys\"><input name=\"name\" placeholder=\"密钥名称\"><select name=\"scopes\"><option value=\"read\">只读</option><option value=\"read,write\">读写</option></select><button>创建密钥</button></form></section></body></html>"
   respond(conn, 200, "text/html; charset=utf-8", page)
+}
+
+///|
+async fn site_is_public(meta : @lib.JsonMeta) -> Bool {
+  match meta.get_config("site.public") {
+    Some(value) => value != "false"
+    None => true
+  }
+}
+
+///|
+fn session_authenticated(
+  request : @http.Request,
+  startup_session : StartupSession,
+  admin_session : AdminSession,
+) -> Bool {
+  match extract_cookie(request, "mbt_session") {
+    Some(token) if token == startup_session.session_token => true
+    _ => admin_authenticated(request, admin_session)
+  }
 }
 
 ///|
@@ -506,13 +558,21 @@ async fn render_doc_page(
   storage : @lib.LocalStorage,
 ) -> Unit {
   let (path, _) = split_query(request.path)
-  let slug = path[3:].to_owned()
+  render_doc_page_by_slug(conn, storage, path[3:].to_owned())
+}
+
+///|
+async fn render_doc_page_by_slug(
+  conn : @http.ServerConnection,
+  storage : @lib.LocalStorage,
+  slug : String,
+) -> Unit {
   match storage.read(slug) {
     Some(content) => {
       let html = @cmark_html.render(content, safe=true)
-      let page = "<!doctype html><html><head><meta charset=\"utf-8\"><title>mbt-mdwiki</title></head><body>" +
+      let page = "<!doctype html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>mbt-mdwiki</title></head><body><main style=\"max-width:860px;margin:40px auto;padding:0 20px\">" +
         html +
-        "</body></html>"
+        "</main></body></html>"
       respond(conn, 200, "text/html; charset=utf-8", page)
     }
     None => respond_error(conn, 404, "document not found")
