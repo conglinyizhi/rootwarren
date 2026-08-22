@@ -31,11 +31,15 @@ make check
 PORT=8001 ADMIN_TOKEN=replace-me make run
 ```
 
+`make run` builds the MoonBit JS client first, then starts the native server. The startup log prints the client URL (`/`), public document URL (`/d/index`), admin URL, and REST API URL. Use `make build-frontend` when only the browser bundle is needed.
+
 - `PORT` defaults to `8001`.
 - `ADMIN_TOKEN` is required for `/admin/*`; do not leave it unset in a public deployment.
 - Use `make test` when tests exist. Run `moon fmt` after source changes.
+- For the client shell check: `curl http://127.0.0.1:8001/`.
 - For the public page check: `curl http://127.0.0.1:8001/d/index`.
 - For protected API examples, see `docs/API.md`.
+- The client bundle is built at `_build/js/debug/build/frontend/frontend.js`.
 
 ## API Security Model
 

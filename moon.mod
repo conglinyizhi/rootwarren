@@ -29,4 +29,5 @@ import {
   "moonbitlang/async@0.21.0",
   "moonbit-community/cmark@0.4.6",
   "moonbitlang/x@0.5.1",
+  "moonbit-community/rabbita@0.15.4",
 }

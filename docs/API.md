@@ -144,6 +144,17 @@ Requires `read`.
 {"site":{"title":"mbt-mdwiki","description":""}}
 ```
 
+## Client Web App
+
+```http
+GET /
+GET /frontend.js
+```
+
+`make run` builds and serves the MoonBit JS client from the same native server. The client keeps the API key in memory, lists documents, searches, reads Markdown, and exposes write controls only when the key has `read,write` scope. It does not add OAuth, MCP, vector search, offline sync, or collaboration.
+
+The client implementation brief is in [`docs/CLIENT.md`](CLIENT.md).
+
 ## Public Browser View
 
 ```http

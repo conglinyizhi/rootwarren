@@ -2,6 +2,7 @@ import {
   "conglinyizhi/mbt-mdwiki" @lib,
   "moonbitlang/async",
   "moonbitlang/async/http",
+  "moonbitlang/async/fs",
   "moonbitlang/async/io",
   "moonbitlang/async/socket",
   "moonbitlang/core/env",

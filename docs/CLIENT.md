@@ -6,6 +6,8 @@ The product is a **document backend for people and language-model clients**. Mar
 
 Read `docs/API.md` for the exact endpoint contract. This file defines the client product shape and interaction priorities.
 
+The reference implementation is a MoonBit JS package under `frontend/`, built by `make run` and served from the native backend at `/` and `/frontend.js`. Other clients may be Web, TUI, desktop, or agent-managed; they should preserve the same API and security behavior.
+
 ## Product Priorities
 
 1. **Find and read documents quickly.** Navigation and search should remain usable before any editing features appear.

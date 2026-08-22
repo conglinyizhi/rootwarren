@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>mbt-mdwiki</title>
+  <style>
+    :root { color-scheme: light; font-family: Inter, "Noto Sans SC", sans-serif; background: #f3f5f2; color: #1e2820; }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; }
+    button, input, textarea { font: inherit; }
+    button { cursor: pointer; border: 1px solid #47604d; background: #f8fbf6; color: #213b29; padding: 7px 10px; border-radius: 4px; }
+    button:hover:not(:disabled) { background: #dcead9; }
+    button:disabled { opacity: .48; cursor: not-allowed; }
+    input, textarea { width: 100%; border: 1px solid #aab8a8; background: #fff; padding: 8px; border-radius: 3px; }
+    textarea { resize: vertical; min-height: 28rem; line-height: 1.5; font-family: "Noto Sans Mono", monospace; }
+    .client-shell { min-height: 100vh; }
+    .client-header { display: grid; grid-template-columns: minmax(10rem, .8fr) minmax(18rem, 2fr) auto; gap: 12px; align-items: center; padding: 14px 20px; background: #23412e; color: #f5f9f3; }
+    .client-header h1 { margin: 0; font-size: 1.1rem; }
+    .client-header input { background: #f7fbf6; color: #1e2820; }
+    .client-shell > p { margin: 0; padding: 8px 20px; min-height: 2.4rem; border-bottom: 1px solid #d7dfd5; color: #54615a; font-size: .9rem; }
+    .workspace { display: grid; grid-template-columns: minmax(15rem, 24rem) minmax(0, 1fr); min-height: calc(100vh - 6rem); }
+    .sidebar { padding: 16px; border-right: 1px solid #c8d2c7; background: #edf2eb; overflow: auto; }
+    .sidebar h2 { margin: 0 0 10px; font-size: .88rem; color: #47604d; text-transform: uppercase; }
+    .sidebar input, .sidebar button { margin-bottom: 9px; }
+    .document-button, .result-button { display: block; width: 100%; text-align: left; border-color: transparent; background: transparent; overflow-wrap: anywhere; }
+    .document-button:hover, .result-button:hover { background: #dcead9; }
+    .editor-panel { padding: 18px; max-width: 1100px; width: 100%; }
+    .editor-panel > input { margin-bottom: 10px; }
+    .editor-actions { display: flex; gap: 8px; margin-top: 10px; }
+    @media (max-width: 720px) {
+      .client-header { grid-template-columns: 1fr; }
+      .workspace { grid-template-columns: 1fr; }
+      .sidebar { border-right: 0; border-bottom: 1px solid #c8d2c7; }
+      textarea { min-height: 18rem; }
+    }
+  </style>
+</head>
+<body>
+  <div id="app"></div>
+  <script src="/frontend.js"></script>
+</body>
+</html>

@@ -8,12 +8,38 @@ async fn main {
   }
   let server = @http.Server(@socket.Addr::parse("0.0.0.0:" + port))
   println("mbt-mdwiki listening on http://127.0.0.1:\{port}")
+  println("client: http://127.0.0.1:\{port}/")
   println("public docs: http://127.0.0.1:\{port}/d/index")
-  println("admin login: http://127.0.0.1:\{port}/admin/login (requires ADMIN_TOKEN)")
+  println(
+    "admin login: http://127.0.0.1:\{port}/admin/login (requires ADMIN_TOKEN)",
+  )
   println("REST API: http://127.0.0.1:\{port}/api/v1/docs")
   server.run_forever() <| ((request, body, conn) => {
     handle(request, body, conn, storage, meta)
   })
+}
+
+///|
+async fn serve_static_file(
+  conn : @http.ServerConnection,
+  path : String,
+  content_type : String,
+) -> Unit {
+  if !@fs.exists(path) {
+    respond(
+      conn, 503, "text/plain; charset=utf-8", "missing frontend resource; run `make build-frontend`",
+    )
+    return
+  }
+  let file = @fs.open(path, mode=ReadOnly)
+  defer file.close()
+  conn
+  ..send_response(200, "OK", extra_headers={
+    "Content-Type": content_type,
+    "Content-Length": file.size().to_string(),
+  })
+  ..write_reader(file)
+  .end_response()
 }
 
 ///|
@@ -68,6 +94,16 @@ async fn handle(
   let path = request.path
   if request.meth is Get && path == "/health" {
     respond(conn, 200, "text/plain", "ok")
+    return
+  }
+  if request.meth is Get && path == "/" {
+    serve_static_file(conn, "frontend/index.html", "text/html; charset=utf-8")
+    return
+  }
+  if request.meth is Get && path == "/frontend.js" {
+    serve_static_file(
+      conn, "_build/js/debug/build/frontend/frontend.js", "application/javascript; charset=utf-8",
+    )
     return
   }
   if path.has_prefix("/api/v1/") {
