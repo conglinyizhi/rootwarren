@@ -1,0 +1,59 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "conglinyizhi/mbt-mdwiki"
+
+// Values
+pub fn generate_api_key() -> String
+
+pub fn hash_api_key(String) -> String
+
+pub fn valid_slug(String) -> Bool
+
+// Errors
+pub(all) suberror StorageError {
+  InvalidSlug(String)
+}
+
+// Types and methods
+pub struct ApiKeyInfo {
+  id : Int
+  name : String
+  scopes : String
+  enabled : Bool
+  created_at : String
+}
+
+pub struct ApiKeyRecord {
+  id : Int
+  name : String
+  key_hash : String
+  scopes : String
+  mut enabled : Bool
+  created_at : String
+}
+
+type JsonMeta
+pub async fn JsonMeta::create_api_key(Self, String, String) -> String
+pub async fn JsonMeta::get_config(Self, String) -> String?
+pub async fn JsonMeta::list_api_keys(Self) -> Array[ApiKeyInfo]
+pub async fn JsonMeta::open(String) -> Self
+pub async fn JsonMeta::revoke_api_key(Self, Int) -> Unit
+pub async fn JsonMeta::set_config(Self, String, String) -> Unit
+pub async fn JsonMeta::verify_api_key(Self, String) -> String?
+
+type LocalStorage
+pub async fn LocalStorage::delete(Self, String) -> Unit
+pub async fn LocalStorage::list(Self) -> Array[String]
+pub fn LocalStorage::new(String) -> Self
+pub async fn LocalStorage::read(Self, String) -> String?
+pub async fn LocalStorage::write(Self, String, String) -> Unit
+pub impl Storage for LocalStorage
+
+// Type aliases
+
+// Traits
+pub trait Storage {
+  async fn read(Self, String) -> String?
+  async fn write(Self, String, String) -> Unit
+  async fn delete(Self, String) -> Unit
+  async fn list(Self) -> Array[String]
+}

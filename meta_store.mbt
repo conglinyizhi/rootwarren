@@ -28,12 +28,10 @@ fn JsonMeta::api_keys_path(self : JsonMeta) -> String {
 ///|
 async fn JsonMeta::load_config(self : JsonMeta) -> Map[String, String] {
   let path = self.config_path()
-  guard @fs.exists(path) else {
-    return {}
-  }
+  guard @fs.exists(path) else { return {} }
   let content = @utf8.decode_lossy(@fs.read_file(path).binary()[:])
-  let json = try { @json.parse(content) } catch { _ => return {} }
-  let result : Map[String, String] = {}
+  let json = @json.parse(content) catch { _ => return {} }
+  let result : Map[String, String] = Map([])
   if json is Object(obj) {
     for k, v in obj {
       if v is String(s) {
@@ -45,8 +43,11 @@ async fn JsonMeta::load_config(self : JsonMeta) -> Map[String, String] {
 }
 
 ///|
-async fn JsonMeta::save_config(self : JsonMeta, config : Map[String, String]) -> Unit {
-  let obj : Map[String, Json] = {}
+async fn JsonMeta::save_config(
+  self : JsonMeta,
+  config : Map[String, String],
+) -> Unit {
+  let obj : Map[String, Json] = Map([])
   for k, v in config {
     obj[k] = Json::string(v)
   }
@@ -58,13 +59,17 @@ async fn JsonMeta::save_config(self : JsonMeta, config : Map[String, String]) ->
 
 ///|
 /// 读配置项，不存在返回 None
-pub async fn JsonMeta::get_config(self : JsonMeta, key : String) -> Option[String] {
+pub async fn JsonMeta::get_config(self : JsonMeta, key : String) -> String? {
   self.load_config().get(key)
 }
 
 ///|
 /// 写配置项
-pub async fn JsonMeta::set_config(self : JsonMeta, key : String, value : String) -> Unit {
+pub async fn JsonMeta::set_config(
+  self : JsonMeta,
+  key : String,
+  value : String,
+) -> Unit {
   let config = self.load_config()
   config[key] = value
   self.save_config(config)
@@ -116,11 +121,9 @@ fn json_bool(o : Map[String, Json], key : String) -> Bool {
 ///|
 async fn JsonMeta::load_api_keys(self : JsonMeta) -> Array[ApiKeyRecord] {
   let path = self.api_keys_path()
-  guard @fs.exists(path) else {
-    return []
-  }
+  guard @fs.exists(path) else { return [] }
   let content = @utf8.decode_lossy(@fs.read_file(path).binary()[:])
-  let json = try { @json.parse(content) } catch { _ => return [] }
+  let json = @json.parse(content) catch { _ => return [] }
   let result : Array[ApiKeyRecord] = []
   if json is Array(items) {
     for item in items {
@@ -140,7 +143,10 @@ async fn JsonMeta::load_api_keys(self : JsonMeta) -> Array[ApiKeyRecord] {
 }
 
 ///|
-async fn JsonMeta::save_api_keys(self : JsonMeta, keys : Array[ApiKeyRecord]) -> Unit {
+async fn JsonMeta::save_api_keys(
+  self : JsonMeta,
+  keys : Array[ApiKeyRecord],
+) -> Unit {
   let arr : Array[Json] = []
   for k in keys {
     let obj : Map[String, Json] = {
@@ -161,15 +167,26 @@ async fn JsonMeta::save_api_keys(self : JsonMeta, keys : Array[ApiKeyRecord]) ->
 
 ///|
 /// 创建 API key：返回明文 key（仅此一次，文件里只存哈希）
-pub async fn JsonMeta::create_api_key(self : JsonMeta, name : String, scopes : String) -> String {
+pub async fn JsonMeta::create_api_key(
+  self : JsonMeta,
+  name : String,
+  scopes : String,
+) -> String {
   let keys = self.load_api_keys()
-  let next_id = keys.fold(init=0, fn(acc, k) { if k.id > acc { k.id } else { acc } }) + 1
+  let next_id = keys.fold(init=0, fn(acc, k) {
+      if k.id > acc {
+        k.id
+      } else {
+        acc
+      }
+    }) +
+    1
   let plain = generate_api_key()
   let record = {
     id: next_id,
-    name: name,
+    name,
     key_hash: hash_api_key(plain),
-    scopes: scopes,
+    scopes,
     enabled: true,
     created_at: "",
   }
@@ -180,7 +197,7 @@ pub async fn JsonMeta::create_api_key(self : JsonMeta, name : String, scopes : S
 
 ///|
 /// 校验 API key：key 有效且启用时返回 scopes，否则 None
-pub async fn JsonMeta::verify_api_key(self : JsonMeta, key : String) -> Option[String] {
+pub async fn JsonMeta::verify_api_key(self : JsonMeta, key : String) -> String? {
   let hash = hash_api_key(key)
   for record in self.load_api_keys() {
     if record.key_hash == hash && record.enabled {

@@ -25,8 +25,16 @@ async fn respond(
 }
 
 ///|
-async fn respond_error(conn : @http.ServerConnection, code : Int, msg : String) -> Unit {
-  let body = "{\"error\":{\"code\":\"" + code.to_string() + "\",\"message\":\"" + msg + "\"}}"
+async fn respond_error(
+  conn : @http.ServerConnection,
+  code : Int,
+  msg : String,
+) -> Unit {
+  let body = "{\"error\":{\"code\":\"" +
+    code.to_string() +
+    "\",\"message\":\"" +
+    msg +
+    "\"}}"
   respond(conn, code, "application/json", body)
 }
 
@@ -164,7 +172,7 @@ fn can_write(scopes : String) -> Bool {
 }
 
 ///|
-fn extract_bearer(request : @http.Request) -> Option[String] {
+fn extract_bearer(request : @http.Request) -> String? {
   for k, v in request.headers {
     if k == "authorization" || k == "Authorization" {
       if v.has_prefix("Bearer ") {
@@ -184,7 +192,7 @@ fn split_query(path : StringView) -> (String, String) {
 }
 
 ///|
-fn query_param(query : String, name : String) -> Option[String] {
+fn query_param(query : String, name : String) -> String? {
   for part in query.split("&") {
     if part.has_prefix(name + "=") {
       return Some(part[name.length() + 1:].to_owned())
@@ -214,21 +222,19 @@ async fn handle_admin(
       None => ""
     }
     if expected != "" && token == expected {
-      respond_with_headers(
-        conn,
-        302,
-        "Found",
-        "text/plain",
-        "redirecting",
-        { "Location": "/admin/keys", "Set-Cookie": "admin_token=" + token + "; Path=/admin; HttpOnly" },
-      )
+      respond_with_headers(conn, 302, "Found", "text/plain", "redirecting", {
+        "Location": "/admin/keys",
+        "Set-Cookie": "admin_token=" + token + "; Path=/admin; HttpOnly",
+      })
     } else {
       admin_login_page(conn, "invalid admin token")
     }
     return
   }
   if !admin_authenticated(request) {
-    respond_with_headers(conn, 302, "Found", "text/plain", "login required", { "Location": "/admin/login" })
+    respond_with_headers(conn, 302, "Found", "text/plain", "login required", {
+      "Location": "/admin/login",
+    })
     return
   }
   if request.meth is Get && path == "/admin/keys" {
@@ -239,7 +245,14 @@ async fn handle_admin(
     let form = @utf8.decode_lossy(body.read_all().binary()[:])
     let name = form_value(form, "name")
     let scopes = form_value(form, "scopes")
-    let key = meta.create_api_key(name, if scopes == "" { "read" } else { scopes })
+    let key = meta.create_api_key(
+      name,
+      if scopes == "" {
+        "read"
+      } else {
+        scopes
+      },
+    )
     admin_keys_page_with_notice(conn, meta, "created key: " + key)
     return
   }
@@ -293,13 +306,21 @@ fn admin_authenticated(request : @http.Request) -> Bool {
 }
 
 ///|
-async fn admin_login_page(conn : @http.ServerConnection, notice : String) -> Unit {
-  let page = "<!doctype html><html><body><h1>mbt-mdwiki admin</h1><p>" + notice + "</p><form method=\"post\" action=\"/admin/login\"><label>Admin token <input name=\"token\" type=\"password\"></label><button>Login</button></form></body></html>"
+async fn admin_login_page(
+  conn : @http.ServerConnection,
+  notice : String,
+) -> Unit {
+  let page = "<!doctype html><html><body><h1>mbt-mdwiki admin</h1><p>" +
+    notice +
+    "</p><form method=\"post\" action=\"/admin/login\"><label>Admin token <input name=\"token\" type=\"password\"></label><button>Login</button></form></body></html>"
   respond(conn, 200, "text/html; charset=utf-8", page)
 }
 
 ///|
-async fn admin_keys_page(conn : @http.ServerConnection, meta : @lib.JsonMeta) -> Unit {
+async fn admin_keys_page(
+  conn : @http.ServerConnection,
+  meta : @lib.JsonMeta,
+) -> Unit {
   admin_keys_page_with_notice(conn, meta, "")
 }
 
@@ -317,11 +338,17 @@ async fn admin_keys_page_with_notice(
     rows.write_string(key.name)
     rows.write_string(" [")
     rows.write_string(key.scopes)
-    rows.write_string("] <form method=\"post\" action=\"/admin/keys/revoke\" style=\"display:inline\"><input type=\"hidden\" name=\"id\" value=\"")
+    rows.write_string(
+      "] <form method=\"post\" action=\"/admin/keys/revoke\" style=\"display:inline\"><input type=\"hidden\" name=\"id\" value=\"",
+    )
     rows.write_string(key.id.to_string())
     rows.write_string("\"><button>Revoke</button></form></li>")
   }
-  let page = "<!doctype html><html><body><h1>API keys</h1><p>" + notice + "</p><ul>" + rows.to_string() + "</ul><h2>Create key</h2><form method=\"post\" action=\"/admin/keys\"><input name=\"name\" placeholder=\"name\"><select name=\"scopes\"><option value=\"read\">read</option><option value=\"read,write\">read,write</option></select><button>Create</button></form></body></html>"
+  let page = "<!doctype html><html><body><h1>API keys</h1><p>" +
+    notice +
+    "</p><ul>" +
+    rows.to_string() +
+    "</ul><h2>Create key</h2><form method=\"post\" action=\"/admin/keys\"><input name=\"name\" placeholder=\"name\"><select name=\"scopes\"><option value=\"read\">read</option><option value=\"read,write\">read,write</option></select><button>Create</button></form></body></html>"
   respond(conn, 200, "text/html; charset=utf-8", page)
 }
 
@@ -336,7 +363,9 @@ async fn render_doc_page(
   match storage.read(slug) {
     Some(content) => {
       let html = @cmark_html.render(content, safe=true)
-      let page = "<!doctype html><html><head><meta charset=\"utf-8\"><title>mbt-mdwiki</title></head><body>" + html + "</body></html>"
+      let page = "<!doctype html><html><head><meta charset=\"utf-8\"><title>mbt-mdwiki</title></head><body>" +
+        html +
+        "</body></html>"
       respond(conn, 200, "text/html; charset=utf-8", page)
     }
     None => respond_error(conn, 404, "document not found")
@@ -362,14 +391,13 @@ async fn read_doc(
 ) -> Unit {
   let (_, query) = split_query(request.path)
   match storage.read(slug) {
-    Some(content) => {
+    Some(content) =>
       // D3 之前 format=html 先回 raw
       if query_param(query, "format") == Some("html") {
         respond(conn, 200, "text/html", content)
       } else {
         respond(conn, 200, "text/markdown; charset=utf-8", content)
       }
-    }
     None => respond_error(conn, 404, "document not found")
   }
 }
@@ -422,11 +450,10 @@ async fn search_docs(
   let hits : Array[String] = []
   for slug in storage.list() {
     match storage.read(slug) {
-      Some(content) => {
+      Some(content) =>
         if slug.contains(q) || content.contains(q) {
           hits.push(slug)
         }
-      }
       None => ()
     }
   }
@@ -447,6 +474,10 @@ async fn config_docs(
     Some(d) => d
     None => ""
   }
-  let body = "{\"site\":{\"title\":\"" + title + "\",\"description\":\"" + desc + "\"}}"
+  let body = "{\"site\":{\"title\":\"" +
+    title +
+    "\",\"description\":\"" +
+    desc +
+    "\"}}"
   respond(conn, 200, "application/json", body)
 }

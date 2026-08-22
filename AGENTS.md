@@ -1,53 +1,53 @@
-# Project Agents.md Guide
+# mbt-mdwiki Agent Guide
 
-This is a [MoonBit](https://docs.moonbitlang.com) project.
+`mbt-mdwiki` is a MoonBit document backend. Markdown files under `content/` are the source of truth. The service exposes a protected REST API for agents and other clients to read, write, search, and delete documents.
 
-You can browse and install extra skills here:
-<https://github.com/moonbitlang/skills>
+## Scope
 
-## Project Structure
+- Keep the server single-process and native-only.
+- Do not add Docker, a database server, MCP server code, OAuth, or microservices.
+- Use `content/` for documents and `meta/` for runtime JSON metadata.
+- `meta/` is ignored by git. It contains API-key hashes and must not be committed.
+- The public browser view is intentionally thin: `GET /d/{slug}` renders Markdown as HTML.
 
-- MoonBit packages are organized per directory; each directory contains a
-  `moon.pkg` file listing its dependencies. Each package has its files and
-  blackbox test files (ending in `_test.mbt`) and whitebox test files (ending in
-  `_wbtest.mbt`).
+## Layout
 
-- In the toplevel directory, there is a `moon.mod` file listing module
-  metadata.
+- `content/`: Markdown source documents. A document slug is its relative path without `.md`.
+- `meta/config.json`: runtime site configuration.
+- `meta/api_keys.json`: API-key records. Plaintext keys are never stored.
+- `storage.mbt`, `local_storage.mbt`: content-storage abstraction and local filesystem implementation.
+- `meta_store.mbt`: JSON-backed config and API-key storage.
+- `auth.mbt`: API-key generation and SHA-256 hashing.
+- `cmd/main/main.mbt`: HTTP routes, API authentication, public rendering, and the small admin surface.
+- `docs/API.md`: client-facing REST API contract.
+- `scripts/demo.sh`: local end-to-end demonstration.
 
-## Coding convention
+## Run And Verify
 
-- MoonBit code is organized in block style, each block is separated by `///|`,
-  the order of each block is irrelevant. In some refactorings, you can process
-  block by block independently.
+The current MoonBit nightly needs `MOON_CC=gcc` on this host because its automatic native archiver discovery selects an invalid path. The project `Makefile` exports it.
 
-- Try to keep deprecated blocks in file called `deprecated.mbt` in each
-  directory.
+```sh
+make check
+PORT=8001 ADMIN_TOKEN=replace-me make run
+```
 
-## Tooling
+- `PORT` defaults to `8001`.
+- `ADMIN_TOKEN` is required for `/admin/*`; do not leave it unset in a public deployment.
+- Use `make test` when tests exist. Run `moon fmt` after source changes.
+- For the public page check: `curl http://127.0.0.1:8001/d/index`.
+- For protected API examples, see `docs/API.md`.
 
-- `moon fmt` is used to format your code properly.
+## API Security Model
 
-- `moon ide` provides project navigation helpers like `peek-def`, `outline`, and
-  `find-references`. See $moonbit-agent-guide for details.
+- Clients authenticate with `Authorization: Bearer <api_key>`.
+- Keys have `read` or `read,write` scopes.
+- API-key plaintext is shown only on admin creation; only the SHA-256 hash is persisted.
+- Use the admin page to create/revoke keys. It authenticates with `ADMIN_TOKEN` and an HttpOnly cookie.
+- Do not log request authorization headers or generated plaintext keys.
 
-- `moon info` is used to update the generated interface of the package, each
-  package has a generated interface file `.mbti`, it is a brief formal
-  description of the package. If nothing in `.mbti` changes, this means your
-  change does not bring the visible changes to the external package users, it is
-  typically a safe refactoring.
+## MoonBit Notes
 
-- In the last step, run `moon info && moon fmt` to update the interface and
-  format the code. Check the diffs of `.mbti` file to see if the changes are
-  expected.
-
-- Run `moon test` to check tests pass. MoonBit supports snapshot testing; when
-  changes affect outputs, run `moon test --update` to refresh snapshots.
-
-- Prefer `assert_eq` or `assert_true(pattern is Pattern(...))` for results that
-  are stable or very unlikely to change. For snapshot tests that record
-  structured debugging output, derive `Debug` and use `debug_inspect`, rather
-  than deriving `Show` for debugging. For solid, well-defined results (e.g.
-  scientific computations), prefer assertion tests. You can use
-  `moon coverage analyze > uncovered.log` to see which parts of your code are
-  not covered by tests.
+- Code blocks are separated with `///|`.
+- Package configuration is JSON in `moon.pkg.json`; imports use aliases without the `@` character in JSON, then code references them with `@alias`.
+- Discover current APIs with `moon ide doc`; the toolchain is nightly and exact APIs can move.
+- MoonBit `String::to_bytes()` is not the encoding to use for interoperable API-key hashes. `auth.mbt` deliberately uses `@utf8.encode` before SHA-256.
