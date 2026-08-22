@@ -155,15 +155,11 @@ async fn handle(
         }
         _ => {
           let public = site_is_public(meta)
-          if public ||
-            session_authenticated(request, startup_session, admin_session) {
-            if session_authenticated(request, startup_session, admin_session) {
-              serve_static_file(
-                conn, "frontend/index.html", "text/html; charset=utf-8",
-              )
-            } else {
-              render_doc_page_by_slug(conn, storage, meta, "index")
-            }
+          let can_edit = session_authenticated(
+            request, startup_session, admin_session,
+          )
+          if public || can_edit {
+            render_doc_page_by_slug(conn, storage, meta, "index", can_edit)
           } else {
             respond_error(
               conn, 403, "site is private; use the admin bootstrap URL",
@@ -173,6 +169,21 @@ async fn handle(
       }
       return
     }
+  }
+  if request.meth is Get && path == "/edit" {
+    if session_authenticated(request, startup_session, admin_session) {
+      serve_static_file(conn, "frontend/index.html", "text/html; charset=utf-8")
+    } else {
+      respond_with_headers(
+        conn,
+        302,
+        "Found",
+        "text/plain",
+        "请先登录编辑会话",
+        { "Location": "/" },
+      )
+    }
+    return
   }
   if request.meth is Get && path == "/frontend.js" {
     serve_static_file(
@@ -191,7 +202,12 @@ async fn handle(
   if request.meth is Get && path.has_prefix("/d/") {
     if site_is_public(meta) ||
       session_authenticated(request, startup_session, admin_session) {
-      render_doc_page(request, conn, storage)
+      render_doc_page(
+        request,
+        conn,
+        storage,
+        session_authenticated(request, startup_session, admin_session),
+      )
     } else {
       respond_error(conn, 403, "site is private; use the admin bootstrap URL")
     }
@@ -617,6 +633,7 @@ async fn render_doc_page(
   request : @http.Request,
   conn : @http.ServerConnection,
   storage : @lib.LocalStorage,
+  can_edit : Bool,
 ) -> Unit {
   let (path, _) = split_query(request.path)
   render_doc_page_by_slug(
@@ -624,6 +641,7 @@ async fn render_doc_page(
     storage,
     @lib.JsonMeta::open("meta"),
     path[3:].to_owned(),
+    can_edit,
   )
 }
 
@@ -633,6 +651,7 @@ async fn render_doc_page_by_slug(
   storage : @lib.LocalStorage,
   meta_store : @lib.JsonMeta,
   slug : String,
+  can_edit : Bool,
 ) -> Unit {
   match storage.read(slug) {
     Some(content) => {
@@ -659,9 +678,15 @@ async fn render_doc_page_by_slug(
       } else {
         ""
       }
+      let edit_link = if can_edit {
+        "<p><a href=\"/edit\">进入编辑器</a></p>"
+      } else {
+        ""
+      }
       let page = "<!doctype html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>" +
         page_title +
         "</title></head><body><main style=\"max-width:860px;margin:40px auto;padding:0 20px\"><p><a href=\"/\">返回首页</a></p>" +
+        edit_link +
         tree +
         html +
         tags +
