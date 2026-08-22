@@ -39,7 +39,7 @@
 │  └──────────┴───────────┴──────────┴────────────┘  │
 │                                                    │
 │  Storage trait（抽象层）                             │
-│   └─ LocalStorage → docs/*.md       SQLite: meta.db │
+│   └─ LocalStorage → content/*.md   SQLite: meta.db │
 │      （内容，git 可管）               （配置/key/索引）│
 └────────────────────────────────────────────────────┘
 ```
@@ -69,7 +69,7 @@
 ### 文件系统（内容唯一真相）
 
 ```
-docs/
+content/
   index.md              ← 站点首页
   guide/
     getting-started.md  ← slug: guide/getting-started
@@ -79,7 +79,7 @@ docs/
 meta.db                 ← SQLite（配置/密钥/索引）
 ```
 
-slug 即相对路径去扩展名，天然唯一。`docs/` 由 git 管理，回退靠 git。
+slug 即相对路径去扩展名，天然唯一。`content/` 由 git 管理，回退靠 git。
 
 ### 存储抽象层（Storage trait）
 
@@ -93,7 +93,7 @@ trait Storage {
 }
 ```
 
-- MVP 实现 `LocalStorage`：映射到 `docs/` 目录，路径安全校验（防 `../` 逃逸）。
+- MVP 实现 `LocalStorage`：映射到 `content/` 目录，路径安全校验（防 `../` 逃逸）。
 - Phase 2 实现：`MemoryStorage`（测试/演示，纯内存零 IO）、`ObjectStorage`（多位置容器）。
 - 服务端代码只依赖 trait，不直接碰文件系统；换实现不动业务逻辑。
 - 不做事务、不做插件机制（避免过度设计）。
@@ -108,7 +108,7 @@ trait Storage {
 
 ### 搜索策略
 
-- **MVP（关键词搜索）**：文档量几十篇规模，读 `docs/` 文件做包含匹配 + `doc_index` 标题权重排序，毫秒级，零额外依赖。
+- **MVP（关键词搜索）**：文档量几十篇规模，读 `content/` 文件做包含匹配 + `doc_index` 标题权重排序，毫秒级，零额外依赖。
 - **Phase 2（向量搜索，文本文件存储）**：嵌入向量序列化为文本/JSON 文件（`meta/vectors/` 每篇一个 `.json`），启动时读进内存算余弦相似度。不引入二进制向量库，天然可 git、可回退。
 
 ## 7. API 设计
@@ -167,7 +167,7 @@ trait Storage {
 - 向量搜索：phase 2，MVP 不涉及嵌入模型。
 - 多用户 / 团队权限：MVP 单管理员 + API key scope。
 - 在线 Markdown 编辑器：MVP 不做（内容靠文件/git/API 写入）。
-- 版本历史 API：MVP 不做（依赖 git 管理 docs/）。
+- 版本历史 API：MVP 不做（依赖 git 管理 content/）。
 - 容器化 / 微服务 / 分布式：明确不做。
 
 ## 12. 错误处理与安全
