@@ -2,6 +2,8 @@
 
 Base URL: `http://127.0.0.1:8001`
 
+The listener can be configured with `--ip` and `--port`, or with `MBT_MDWIKI_IP` and `PORT`. For example: `make run ARGS="--ip 127.0.0.1 --port 9000"`.
+
 `PORT` can change the listener port. All endpoints below use `/api/v1` unless stated otherwise.
 
 ## Authentication
@@ -143,6 +145,14 @@ Requires `read`.
 ```json
 {"site":{"title":"mbt-mdwiki","description":""}}
 ```
+
+## llms.txt
+
+```http
+GET /llms.txt
+```
+
+When `site.public` is not `false`, the server generates a Markdown index from document front matter titles, tags, and slugs. When the site is private, this endpoint returns `403`. The generated links point to the rendered `/d/{slug}` pages.
 
 ## Client Web App
 

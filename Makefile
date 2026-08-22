@@ -10,7 +10,7 @@ build-frontend:
 	$(MOON) build frontend --target js
 
 run: build-frontend
-	$(MOON) run cmd/main
+	$(MOON) run cmd/main -- $(ARGS)
 
 build: build-frontend
 	$(MOON) build cmd/main --target native

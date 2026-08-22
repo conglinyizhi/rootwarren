@@ -8,6 +8,7 @@ import {
   "moonbitlang/async/socket",
   "moonbitlang/core/env",
   "moonbitlang/core/encoding/utf8",
+  "moonbitlang/core/argparse",
   "moonbit-community/cmark/cmark_html",
 }
 

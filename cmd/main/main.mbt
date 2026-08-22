@@ -27,11 +27,34 @@ async fn main {
     session_token: @lib.generate_api_key(),
     consumed: false,
   }
-  let port = match @env.get_env_var("PORT") {
-    Some(p) => p
-    None => "8001"
+  let command = @argparse.Command("mbt-mdwiki", options=[
+    @argparse.OptionArg(
+      "ip",
+      long="ip",
+      about="监听 IP 地址",
+      env="MBT_MDWIKI_IP",
+      default_values=["0.0.0.0"],
+    ),
+    @argparse.OptionArg("port", long="port", about="监听端口", env="PORT", default_values=[
+      "8001",
+    ]),
+  ])
+  let raw_args = @env.args()
+  let argv = match raw_args.get(0) {
+    Some(first) if first.has_suffix(".exe") || first.has_suffix("/main") =>
+      raw_args[1:]
+    _ => raw_args[:]
   }
-  let server = @http.Server(@socket.Addr::parse("0.0.0.0:" + port))
+  let args = command.parse(argv~, env=@env.get_env_vars())
+  let ip = match args.values.get("ip") {
+    Some([value, ..]) => value
+    _ => "0.0.0.0"
+  }
+  let port = match args.values.get("port") {
+    Some([value, ..]) => value
+    _ => "8001"
+  }
+  let server = @http.Server(@socket.Addr::parse(ip + ":" + port))
   println("mbt-mdwiki listening on http://127.0.0.1:\{port}")
   println("客户端 Key（本次启动仅显示一次）：\{startup_key}")
   println(
@@ -189,6 +212,14 @@ async fn handle(
     serve_static_file(
       conn, "_build/js/debug/build/frontend/frontend.js", "application/javascript; charset=utf-8",
     )
+    return
+  }
+  if request.meth is Get && path == "/llms.txt" {
+    if site_is_public(meta) {
+      serve_llms(conn, storage)
+    } else {
+      respond_error(conn, 403, "site is private; use the admin bootstrap URL")
+    }
     return
   }
   if path.has_prefix("/api/v1/") {
@@ -711,6 +742,37 @@ async fn render_doc_page_by_slug(
     }
     None => respond_error(conn, 404, "document not found")
   }
+}
+
+///|
+async fn serve_llms(
+  conn : @http.ServerConnection,
+  storage : @lib.LocalStorage,
+) -> Unit {
+  let output = StringBuilder()
+  output.write_string("# mbt-mdwiki\n\n")
+  output.write_string("这是一个由 MoonBit 驱动的 Markdown Wiki。\n\n")
+  for slug in storage.list() {
+    match storage.read(slug) {
+      Some(raw) => {
+        let meta = document_meta(raw)
+        output.write_string("- [")
+        output.write_string(meta.title)
+        output.write_string("](/d/")
+        output.write_string(slug)
+        output.write_string(")")
+        if !meta.tags.is_empty() {
+          output.write_string(" #")
+          output.write_string(
+            meta.tags.replace(old=", ", new=" #").replace(old=",", new=" "),
+          )
+        }
+        output.write_string("\n")
+      }
+      None => ()
+    }
+  }
+  respond(conn, 200, "text/plain; charset=utf-8", output.to_string())
 }
 
 ///|
