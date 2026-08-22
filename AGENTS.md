@@ -48,6 +48,6 @@ PORT=8001 ADMIN_TOKEN=replace-me make run
 ## MoonBit Notes
 
 - Code blocks are separated with `///|`.
-- Package configuration is JSON in `moon.pkg.json`; imports use aliases without the `@` character in JSON, then code references them with `@alias`.
+- Package configuration is in `moon.pkg`; imports may declare an alias with `@alias`, and code references it with that `@alias` name.
 - Discover current APIs with `moon ide doc`; the toolchain is nightly and exact APIs can move.
 - MoonBit `String::to_bytes()` is not the encoding to use for interoperable API-key hashes. `auth.mbt` deliberately uses `@utf8.encode` before SHA-256.

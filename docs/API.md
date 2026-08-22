@@ -118,7 +118,7 @@ GET /api/v1/search?q={query}
 Authorization: Bearer <key>
 ```
 
-Requires `read`. The MVP performs case-sensitive substring matching against each slug and Markdown source. Query values should be URL encoded by the client.
+Requires `read`. The MVP performs case-sensitive substring matching against each slug and Markdown source. The current server does not percent-decode query values, so use plain ASCII query text without `&` or `=` until URL decoding is implemented.
 
 ```sh
 curl -G \
