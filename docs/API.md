@@ -20,7 +20,7 @@ Keys have comma-separated scopes:
 
 Missing or invalid credentials return `401`. A valid key without the needed scope returns `403`.
 
-Create and revoke keys from `/admin/login`. The server requires `ADMIN_TOKEN` to be set at startup. A newly created key is shown once; record it in the calling client's secret store, never in a document or repository.
+Create and revoke keys from `/admin/login`. The server can use `ADMIN_TOKEN` for fixed-token form login, but it is optional. When unset, use the one-time random admin URL printed at startup. A newly created API key is shown once; record it in the calling client's secret store, never in a document or repository.
 
 ## Document Slugs
 
@@ -163,7 +163,7 @@ Each server start generates one random bootstrap URL printed only in the console
 http://127.0.0.1:8001/?api_key=mk_...
 ```
 
-The first request to that URL exchanges the key for an HttpOnly `mbt_session` cookie and returns `302 Location: /`. The bootstrap key is held only in process memory, is invalid after one exchange, and is not stored in `meta/api_keys.json`. The session expires when the server process stops. A normal API key still uses `Authorization: Bearer <key>`.
+The first request to that URL exchanges the key for an HttpOnly `mbt_session` cookie and returns `302 Location: /`. The bootstrap key is held only in process memory, is invalid after one exchange, and is not stored in `meta/api_keys.json`. The session expires when the server process stops. A normal API key still uses `Authorization: Bearer <key>`. The admin bootstrap URL is independent from client API keys: it exchanges for an HttpOnly `mbt_admin_session` cookie and does not create a persistent API key.
 
 ## Public Browser View
 

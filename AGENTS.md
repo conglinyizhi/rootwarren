@@ -34,7 +34,7 @@ PORT=8001 ADMIN_TOKEN=replace-me make run
 `make run` builds the MoonBit JS client first, then starts the native server. The startup log prints one entropy-generated, single-use bootstrap URL in the form `/?api_key=...`; opening it exchanges the key for an HttpOnly, in-process session cookie and redirects to `/`, removing the key from the address bar. The log also prints the public document URL (`/d/index`), admin URL, and REST API URL. Use `make build-frontend` when only the browser bundle is needed.
 
 - `PORT` defaults to `8001`.
-- `ADMIN_TOKEN` is required for `/admin/*`; do not leave it unset in a public deployment.
+- `ADMIN_TOKEN` enables fixed-token form login for `/admin/*`. If it is unset, use the one-time random admin URL printed at startup; do not expose that URL or token in logs beyond the local console.
 - Use `make test` when tests exist. Run `moon fmt` after source changes.
 - For the client shell check: `curl http://127.0.0.1:8001/`.
 - For the public page check: `curl http://127.0.0.1:8001/d/index`.
@@ -46,7 +46,7 @@ PORT=8001 ADMIN_TOKEN=replace-me make run
 - Clients authenticate with `Authorization: Bearer <api_key>`.
 - Keys have `read` or `read,write` scopes.
 - API-key plaintext is shown only on admin creation; only the SHA-256 hash is persisted.
-- Use the admin page to create/revoke keys. It authenticates with `ADMIN_TOKEN` and an HttpOnly cookie.
+- Use the admin page to create/revoke keys. It authenticates through the one-time startup admin URL, or through `ADMIN_TOKEN` form login when configured; both produce an HttpOnly cookie.
 - Do not log request authorization headers or generated plaintext keys.
 
 ## MoonBit Notes

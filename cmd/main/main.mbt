@@ -6,12 +6,24 @@ struct StartupSession {
 }
 
 ///|
+struct AdminSession {
+  bootstrap_key : String
+  session_token : String
+  mut consumed : Bool
+}
+
+///|
 async fn main {
   let storage = @lib.LocalStorage::new("content")
   let meta = @lib.JsonMeta::open("meta")
   let startup_key = @lib.generate_api_key()
-  let startup_session = {
+  let startup_session : StartupSession = {
     bootstrap_key: startup_key,
+    session_token: @lib.generate_api_key(),
+    consumed: false,
+  }
+  let admin_session : AdminSession = {
+    bootstrap_key: @lib.generate_api_key(),
     session_token: @lib.generate_api_key(),
     consumed: false,
   }
@@ -27,11 +39,14 @@ async fn main {
   )
   println("文档首页：http://127.0.0.1:\{port}/d/index")
   println(
-    "admin login: http://127.0.0.1:\{port}/admin/login (requires ADMIN_TOKEN)",
+    "后台地址（一次性登录）：http://127.0.0.1:\{port}/admin/login?admin_key=\{admin_session.bootstrap_key}",
+  )
+  println(
+    "ADMIN_TOKEN 表单登录：\{if @env.get_env_var("ADMIN_TOKEN") is Some(_) { "已配置" } else { "未配置，将仅使用一次性后台地址" }}",
   )
   println("REST API: http://127.0.0.1:\{port}/api/v1/docs")
   server.run_forever() <| ((request, body, conn) => {
-    handle(request, body, conn, storage, meta, startup_session)
+    handle(request, body, conn, storage, meta, startup_session, admin_session)
   })
 }
 
@@ -107,6 +122,7 @@ async fn handle(
   storage : @lib.LocalStorage,
   meta : @lib.JsonMeta,
   startup_session : StartupSession,
+  admin_session : AdminSession,
 ) -> Unit {
   let path = request.path
   if request.meth is Get && path == "/health" {
@@ -151,7 +167,7 @@ async fn handle(
     return
   }
   if path.has_prefix("/admin") {
-    handle_admin(request, body, conn, storage, meta)
+    handle_admin(request, body, conn, storage, meta, admin_session)
     return
   }
   if request.meth is Get && path.has_prefix("/d/") {
@@ -312,13 +328,31 @@ async fn handle_admin(
   conn : @http.ServerConnection,
   _storage : @lib.LocalStorage,
   meta : @lib.JsonMeta,
+  admin_session : AdminSession,
 ) -> Unit {
   let path = request.path
-  if request.meth is Get && path == "/admin/login" {
-    admin_login_page(conn, "")
+  let (clean_path, query) = split_query(path)
+  if request.meth is Get && clean_path == "/admin/login" {
+    match query_param(query, "admin_key") {
+      Some(key) if key == admin_session.bootstrap_key && !admin_session.consumed => {
+        admin_session.consumed = true
+        respond_with_headers(
+          conn,
+          302,
+          "Found",
+          "text/plain",
+          "正在进入后台……",
+          {
+            "Location": "/admin/keys",
+            "Set-Cookie": "mbt_admin_session=\{admin_session.session_token}; Path=/admin; HttpOnly; SameSite=Lax",
+          },
+        )
+      }
+      _ => admin_login_page(conn, "")
+    }
     return
   }
-  if request.meth is Post && path == "/admin/login" {
+  if request.meth is Post && clean_path == "/admin/login" {
     let form = @utf8.decode_lossy(body.read_all().binary()[:])
     let token = form_value(form, "token")
     let expected = match @env.get_env_var("ADMIN_TOKEN") {
@@ -335,17 +369,17 @@ async fn handle_admin(
     }
     return
   }
-  if !admin_authenticated(request) {
+  if !admin_authenticated(request, admin_session) {
     respond_with_headers(conn, 302, "Found", "text/plain", "login required", {
       "Location": "/admin/login",
     })
     return
   }
-  if request.meth is Get && path == "/admin/keys" {
+  if request.meth is Get && clean_path == "/admin/keys" {
     admin_keys_page(conn, meta)
     return
   }
-  if request.meth is Post && path == "/admin/keys" {
+  if request.meth is Post && clean_path == "/admin/keys" {
     let form = @utf8.decode_lossy(body.read_all().binary()[:])
     let name = form_value(form, "name")
     let scopes = form_value(form, "scopes")
@@ -360,7 +394,7 @@ async fn handle_admin(
     admin_keys_page_with_notice(conn, meta, "created key: " + key)
     return
   }
-  if request.meth is Post && path == "/admin/keys/revoke" {
+  if request.meth is Post && clean_path == "/admin/keys/revoke" {
     let form = @utf8.decode_lossy(body.read_all().binary()[:])
     let id = parse_nonnegative_int(form_value(form, "id"))
     meta.revoke_api_key(id)
@@ -393,20 +427,29 @@ fn form_value(form : String, name : String) -> String {
 }
 
 ///|
-fn admin_authenticated(request : @http.Request) -> Bool {
+fn admin_authenticated(
+  request : @http.Request,
+  admin_session : AdminSession,
+) -> Bool {
+  for key, value in request.headers {
+    if key == "cookie" || key == "Cookie" {
+      if value.contains("mbt_admin_session=" + admin_session.session_token) {
+        return true
+      }
+    }
+  }
   let expected = match @env.get_env_var("ADMIN_TOKEN") {
     Some(value) => value
     None => ""
   }
-  if expected == "" {
-    return false
-  }
-  for key, value in request.headers {
-    if key == "cookie" || key == "Cookie" {
-      return value.contains("admin_token=" + expected)
+  if expected.is_empty() {
+    false
+  } else {
+    match extract_cookie(request, "admin_token") {
+      Some(value) => value == expected
+      None => false
     }
   }
-  false
 }
 
 ///|

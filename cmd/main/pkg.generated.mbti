@@ -6,6 +6,8 @@ package "conglinyizhi/mbt-mdwiki/cmd/main"
 // Errors
 
 // Types and methods
+type AdminSession
+
 type StartupSession
 
 // Type aliases
