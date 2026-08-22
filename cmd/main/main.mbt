@@ -595,6 +595,21 @@ struct DocumentMeta {
 }
 
 ///|
+fn rewrite_wiki_links(html : String) -> String {
+  html
+  .replace_all(old="href=\"guide/", new="href=\"/d/guide/")
+  .replace_all(old="href=\"../index\"", new="href=\"/d/index\"")
+  .replace_all(
+    old="href=\"client-design\"",
+    new="href=\"/d/guide/client-design\"",
+  )
+  .replace_all(
+    old="href=\"access-control\"",
+    new="href=\"/d/guide/access-control\"",
+  )
+}
+
+///|
 fn document_meta(raw : String) -> DocumentMeta {
   let fallback_title = match raw.find("# ") {
     Some(i) => {
@@ -657,6 +672,7 @@ async fn render_doc_page_by_slug(
     Some(content) => {
       let meta = document_meta(content)
       let html = @cmark_html.render(meta.body, safe=true)
+      let html = rewrite_wiki_links(html)
       let tags = if meta.tags.is_empty() {
         ""
       } else {
