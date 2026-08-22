@@ -139,6 +139,9 @@ fn initial_model() -> Model {
 }
 
 ///|
+extern "js" fn schedule_initial_load() -> Unit = "() => setTimeout(() => document.querySelector('[data-name=load-documents-button]')?.click(), 0)"
+
+///|
 fn main {
   let app = @rabbita.elmish(
     model=initial_model(),
@@ -413,4 +416,5 @@ fn main {
     },
   )
   app.mount("app")
+  schedule_initial_load()
 }

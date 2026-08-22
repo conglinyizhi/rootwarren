@@ -45,6 +45,11 @@ async fn main {
     "ADMIN_TOKEN 表单登录：\{if @env.get_env_var("ADMIN_TOKEN") is Some(_) { "已配置" } else { "未配置，将仅使用一次性后台地址" }}",
   )
   println("REST API: http://127.0.0.1:\{port}/api/v1/docs")
+  @signal.set_global_cancellation_signals([
+    @signal.Signal::SIGINT,
+    @signal.Signal::SIGTERM,
+    @signal.Signal::SIGHUP,
+  ])
   server.run_forever() <| ((request, body, conn) => {
     handle(request, body, conn, storage, meta, startup_session, admin_session)
   })
@@ -157,7 +162,7 @@ async fn handle(
                 conn, "frontend/index.html", "text/html; charset=utf-8",
               )
             } else {
-              render_doc_page_by_slug(conn, storage, "index")
+              render_doc_page_by_slug(conn, storage, meta, "index")
             }
           } else {
             respond_error(
@@ -422,7 +427,9 @@ async fn handle_admin(
   if request.meth is Post && clean_path == "/admin/site" {
     let form = @utf8.decode_lossy(body.read_all().binary()[:])
     let public = form_value(form, "public") == "true"
+    let show_tree = form_value(form, "show_tree") != "false"
     meta.set_config("site.public", if public { "true" } else { "false" })
+    meta.set_config("site.show_tree", if show_tree { "true" } else { "false" })
     admin_keys_page_with_notice(conn, meta, "网站公开设置已保存")
     return
   }
@@ -504,6 +511,7 @@ async fn admin_keys_page_with_notice(
 ) -> Unit {
   let rows = StringBuilder()
   let public = site_is_public(meta)
+  let show_tree = site_show_tree(meta)
   for key in meta.list_api_keys() {
     rows.write_string("<li>#")
     rows.write_string(key.id.to_string())
@@ -525,7 +533,11 @@ async fn admin_keys_page_with_notice(
     (if public { " checked" } else { "" }) +
     "> 允许未登录用户阅读文档</label><br><label><input type=\"radio\" name=\"public\" value=\"false\"" +
     (if !public { " checked" } else { "" }) +
-    "> 仅登录后允许阅读</label><br><button>保存网站访问设置</button></form></section><section><h2>访问密钥</h2><ul>" +
+    "> 仅登录后允许阅读</label><br><label><input type=\"radio\" name=\"show_tree\" value=\"true\"" +
+    (if show_tree { " checked" } else { "" }) +
+    "> 在阅读页显示文档层级</label><br><label><input type=\"radio\" name=\"show_tree\" value=\"false\"" +
+    (if !show_tree { " checked" } else { "" }) +
+    "> 隐藏文档层级</label><br><button>保存网站访问设置</button></form></section><section><h2>访问密钥</h2><ul>" +
     rows.to_string() +
     "</ul><h3>创建新密钥</h3><form method=\"post\" action=\"/admin/keys\"><input name=\"name\" placeholder=\"密钥名称\"><select name=\"scopes\"><option value=\"read\">只读</option><option value=\"read,write\">读写</option></select><button>创建密钥</button></form></section></body></html>"
   respond(conn, 200, "text/html; charset=utf-8", page)
@@ -534,6 +546,14 @@ async fn admin_keys_page_with_notice(
 ///|
 async fn site_is_public(meta : @lib.JsonMeta) -> Bool {
   match meta.get_config("site.public") {
+    Some(value) => value != "false"
+    None => true
+  }
+}
+
+///|
+async fn site_show_tree(meta : @lib.JsonMeta) -> Bool {
+  match meta.get_config("site.show_tree") {
     Some(value) => value != "false"
     None => true
   }
@@ -552,26 +572,99 @@ fn session_authenticated(
 }
 
 ///|
+struct DocumentMeta {
+  title : String
+  tags : String
+  body : String
+}
+
+///|
+fn document_meta(raw : String) -> DocumentMeta {
+  let fallback_title = match raw.find("# ") {
+    Some(i) => {
+      let line = raw[i + 2:]
+      match line.find("\n") {
+        Some(end) => line[:end].to_owned()
+        None => line.to_owned()
+      }
+    }
+    None => "mbt-mdwiki"
+  }
+  if !raw.has_prefix("---\n") {
+    return { title: fallback_title, tags: "", body: raw }
+  }
+  let end = match raw.find("\n---\n") {
+    Some(i) => i
+    None => return { title: fallback_title, tags: "", body: raw }
+  }
+  let header = raw[4:end]
+  let body = raw[end + 5:].to_owned()
+  let mut title = fallback_title
+  let mut tags = ""
+  for line in header.split("\n") {
+    let line = line.to_owned()
+    if line.has_prefix("title:") {
+      title = line[6:].trim().to_owned()
+    } else if line.has_prefix("tags:") {
+      tags = line[5:].trim().to_owned()
+    }
+  }
+  { title, tags, body }
+}
+
+///|
 async fn render_doc_page(
   request : @http.Request,
   conn : @http.ServerConnection,
   storage : @lib.LocalStorage,
 ) -> Unit {
   let (path, _) = split_query(request.path)
-  render_doc_page_by_slug(conn, storage, path[3:].to_owned())
+  render_doc_page_by_slug(
+    conn,
+    storage,
+    @lib.JsonMeta::open("meta"),
+    path[3:].to_owned(),
+  )
 }
 
 ///|
 async fn render_doc_page_by_slug(
   conn : @http.ServerConnection,
   storage : @lib.LocalStorage,
+  meta_store : @lib.JsonMeta,
   slug : String,
 ) -> Unit {
   match storage.read(slug) {
     Some(content) => {
-      let html = @cmark_html.render(content, safe=true)
-      let page = "<!doctype html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>mbt-mdwiki</title></head><body><main style=\"max-width:860px;margin:40px auto;padding:0 20px\">" +
+      let meta = document_meta(content)
+      let html = @cmark_html.render(meta.body, safe=true)
+      let tags = if meta.tags.is_empty() {
+        ""
+      } else {
+        "<p><small>标签：" + meta.tags + "</small></p>"
+      }
+      let page_title = if slug == "index" {
+        meta.title
+      } else {
+        meta.title + " - mbt-mdwiki"
+      }
+      let tree = if site_show_tree(meta_store) {
+        let items = storage
+          .list()
+          .map(fn(item) {
+            "<li><a href=\"/d/" + item + "\">" + item + "</a></li>"
+          })
+          .join("")
+        "<nav><strong>文档目录</strong><ul>" + items + "</ul></nav>"
+      } else {
+        ""
+      }
+      let page = "<!doctype html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>" +
+        page_title +
+        "</title></head><body><main style=\"max-width:860px;margin:40px auto;padding:0 20px\"><p><a href=\"/\">返回首页</a></p>" +
+        tree +
         html +
+        tags +
         "</main></body></html>"
       respond(conn, 200, "text/html; charset=utf-8", page)
     }

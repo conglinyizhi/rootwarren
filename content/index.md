@@ -1,3 +1,8 @@
+---
+title: mbt-mdwiki Wiki
+tags: wiki, moonbit, agent
+---
+
 # mbt-mdwiki
 
 一个由 MoonBit 驱动的、面向人类与大语言模型的 Markdown Wiki。
