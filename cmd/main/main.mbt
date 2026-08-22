@@ -47,6 +47,10 @@ async fn handle(
     handle_api(request, body, conn, storage, meta)
     return
   }
+  if request.meth is Get && path.has_prefix("/d/") {
+    render_doc_page(request, conn, storage)
+    return
+  }
   respond(conn, 404, "text/plain", "Not Found")
 }
 
@@ -168,6 +172,24 @@ fn query_param(query : String, name : String) -> Option[String] {
     }
   }
   None
+}
+
+///|
+async fn render_doc_page(
+  request : @http.Request,
+  conn : @http.ServerConnection,
+  storage : @lib.LocalStorage,
+) -> Unit {
+  let (path, _) = split_query(request.path)
+  let slug = path[3:].to_owned()
+  match storage.read(slug) {
+    Some(content) => {
+      let html = @cmark_html.render(content, safe=true)
+      let page = "<!doctype html><html><head><meta charset=\"utf-8\"><title>mbt-mdwiki</title></head><body>" + html + "</body></html>"
+      respond(conn, 200, "text/html; charset=utf-8", page)
+    }
+    None => respond_error(conn, 404, "document not found")
+  }
 }
 
 ///|
