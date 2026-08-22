@@ -7,6 +7,10 @@ async fn main {
     None => "8001"
   }
   let server = @http.Server(@socket.Addr::parse("0.0.0.0:" + port))
+  println("mbt-mdwiki listening on http://127.0.0.1:\{port}")
+  println("public docs: http://127.0.0.1:\{port}/d/index")
+  println("admin login: http://127.0.0.1:\{port}/admin/login (requires ADMIN_TOKEN)")
+  println("REST API: http://127.0.0.1:\{port}/api/v1/docs")
   server.run_forever() <| ((request, body, conn) => {
     handle(request, body, conn, storage, meta)
   })
