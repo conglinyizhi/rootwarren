@@ -39,15 +39,15 @@
 │  └──────────┴───────────┴──────────┴────────────┘  │
 │                                                    │
 │  Storage trait（抽象层）                             │
-│   └─ LocalStorage → content/*.md   SQLite: meta.db │
-│      （内容，git 可管）               （配置/key/索引）│
+│   └─ LocalStorage → content/*.md   meta/*.json     │
+│      （内容，git 可管）            （配置/key）      │
 └────────────────────────────────────────────────────┘
 ```
 
 设计原则：
 
 1. 一个进程、一个二进制：HTTP + API + 后台全在一个 MoonBit 程序里。
-2. 文件系统是内容源，SQLite 是元数据：Markdown 文件是唯一真相，SQLite 只存配置、API key、文档索引。
+2. 文件系统是内容源，JSON 文件是元数据：Markdown 文件是唯一真相，`meta/` 下的 JSON 文件只存配置与 API key（哈希）。
 3. 鉴权分两层：人走后台登录会话，机器走 `Authorization: Bearer <api_key>`（只存哈希，scope 分读写）。
 4. 前端是最薄的一层：极简演示页，真正的客户端由第三方自行实现。
 5. 无 MCP 层：MCP 由客户端侧自行封装，服务端只提供干净的 REST API + 接入指南。
@@ -57,7 +57,7 @@
 | 能力 | 选型 | 备注 |
 |---|---|---|
 | HTTP 服务端 | `moonbitlang/async`（官方原生异步） | API 未稳定，但 MVP 够用；社区框架 crescent/mars 作为备选 |
-| SQLite | `mizchi/sqlite` | 维护最活跃，native + JS 双端 |
+| 元数据存储 | JSON 文件（`meta/config.json` + `meta/api_keys.json`） | 弃用 sqlite：`mizchi/sqlite` 在 nightly 工具链上链接系统 libsqlite3 反复失败（静态库顺序问题），改为纯文本文件；单进程规模足够，写文件用临时文件 + rename 保证原子性 |
 | Markdown 渲染 | `moonbit-community/cmark` | 严格 CommonMark + HTML renderer |
 | 哈希（API key） | 标准库（如 `@crypto` 相关）或简单哈希 | key 只存哈希不存明文 |
 | 向量搜索 | 不选型（phase 2） | MVP 用关键词搜索 |
@@ -76,7 +76,9 @@ content/
     api.md              ← slug: guide/api
   concepts/
     vector-search.md
-meta.db                 ← SQLite（配置/密钥/索引）
+meta/                   ← 元数据（JSON 文件）
+  config.json           ← 站点配置（键值）
+  api_keys.json         ← API key（只存哈希）
 ```
 
 slug 即相对路径去扩展名，天然唯一。`content/` 由 git 管理，回退靠 git。
@@ -98,13 +100,11 @@ trait Storage {
 - 服务端代码只依赖 trait，不直接碰文件系统；换实现不动业务逻辑。
 - 不做事务、不做插件机制（避免过度设计）。
 
-### SQLite 表（MVP 三张）
+### 元数据（JSON 文件）
 
-| 表 | 字段 | 作用 |
-|---|---|---|
-| `config` | key, value | 站点标题/描述/搜索模式等键值配置 |
-| `api_keys` | id, name, key_hash, scopes, enabled, created_at | API key 管理；只存哈希，scopes 区分读写 |
-| `doc_index` | slug, title, updated_at, content_hash | 文档元数据 + 搜索索引；正文不冗余进库 |
+- `meta/config.json`：扁平键值配置（站点标题/描述等）。
+- `meta/api_keys.json`：API key 数组，每项 `{id, name, key_hash, scopes, enabled, created_at}`；只存哈希，明文 key 仅在创建时返回一次。
+- 文档索引不单独存：文档量小，搜索直接遍历 `content/` 文件做包含匹配。
 
 ### 搜索策略
 
@@ -176,7 +176,7 @@ trait Storage {
 - 密钥安全：API key 只存哈希，后台展示明文仅一次（创建时）。
 - 登录会话：后台登录用 session cookie + 密码（或初始 token），MVP 单管理员。
 - 输入校验：slug 白名单字符（`[a-zA-Z0-9-_/]`），content 长度上限。
-- 并发写：单进程 + SQLite WAL 或写入锁，MVP 级别足够。
+- 并发写：单进程 + 写文件用「临时文件 + rename」原子替换，MVP 级别足够。
 - 启动参数分离：端口/路径走 CLI/env，不在后台改。
 
 ## 13. 测试策略

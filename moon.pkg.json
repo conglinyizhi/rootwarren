@@ -1,0 +1,10 @@
+{
+  "import": {
+    "moonbitlang/async/fs": "",
+    "moonbitlang/core/encoding/utf8": "",
+    "moonbitlang/core/json": "",
+    "moonbitlang/core/random": "",
+    "moonbitlang/x/crypto": ""
+  },
+  "supported-targets": "native"
+}

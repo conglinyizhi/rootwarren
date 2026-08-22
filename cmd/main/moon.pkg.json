@@ -1,0 +1,18 @@
+{
+  "is-main": true,
+  "import": {
+    "conglinyizhi/mbt-mdwiki": "lib",
+    "moonbitlang/async": "",
+    "moonbitlang/async/http": "",
+    "moonbitlang/async/io": "",
+    "moonbitlang/async/socket": "",
+    "moonbitlang/core/env": "",
+    "moonbitlang/core/encoding/utf8": ""
+  },
+  "supported-targets": "native",
+  "link": {
+    "native": {
+      "cc": "gcc"
+    }
+  }
+}

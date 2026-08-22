@@ -27,6 +27,6 @@ description = "mbt-mdwiki: MoonBit 文档站后端，提供受保护的 REST API
 
 import {
   "moonbitlang/async@0.21.0",
-  "mizchi/sqlite@0.3.1",
   "moonbit-community/cmark@0.4.6",
+  "moonbitlang/x@0.5.1",
 }
