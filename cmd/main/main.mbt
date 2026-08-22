@@ -31,6 +31,21 @@ async fn respond_error(conn : @http.ServerConnection, code : Int, msg : String) 
 }
 
 ///|
+async fn respond_with_headers(
+  conn : @http.ServerConnection,
+  code : Int,
+  reason : String,
+  content_type : String,
+  body : String,
+  headers : Map[@http.CaseInsensitiveString, String],
+) -> Unit {
+  headers["Content-Type"] = content_type
+  conn.send_response(code, reason, extra_headers=headers)
+  conn.write_string(body)
+  conn.end_response()
+}
+
+///|
 async fn handle(
   request : @http.Request,
   body : &@io.Reader,
@@ -45,6 +60,10 @@ async fn handle(
   }
   if path.has_prefix("/api/v1/") {
     handle_api(request, body, conn, storage, meta)
+    return
+  }
+  if path.has_prefix("/admin") {
+    handle_admin(request, body, conn, storage, meta)
     return
   }
   if request.meth is Get && path.has_prefix("/d/") {
@@ -172,6 +191,138 @@ fn query_param(query : String, name : String) -> Option[String] {
     }
   }
   None
+}
+
+///|
+async fn handle_admin(
+  request : @http.Request,
+  body : &@io.Reader,
+  conn : @http.ServerConnection,
+  _storage : @lib.LocalStorage,
+  meta : @lib.JsonMeta,
+) -> Unit {
+  let path = request.path
+  if request.meth is Get && path == "/admin/login" {
+    admin_login_page(conn, "")
+    return
+  }
+  if request.meth is Post && path == "/admin/login" {
+    let form = @utf8.decode_lossy(body.read_all().binary()[:])
+    let token = form_value(form, "token")
+    let expected = match @env.get_env_var("ADMIN_TOKEN") {
+      Some(value) => value
+      None => ""
+    }
+    if expected != "" && token == expected {
+      respond_with_headers(
+        conn,
+        302,
+        "Found",
+        "text/plain",
+        "redirecting",
+        { "Location": "/admin/keys", "Set-Cookie": "admin_token=" + token + "; Path=/admin; HttpOnly" },
+      )
+    } else {
+      admin_login_page(conn, "invalid admin token")
+    }
+    return
+  }
+  if !admin_authenticated(request) {
+    respond_with_headers(conn, 302, "Found", "text/plain", "login required", { "Location": "/admin/login" })
+    return
+  }
+  if request.meth is Get && path == "/admin/keys" {
+    admin_keys_page(conn, meta)
+    return
+  }
+  if request.meth is Post && path == "/admin/keys" {
+    let form = @utf8.decode_lossy(body.read_all().binary()[:])
+    let name = form_value(form, "name")
+    let scopes = form_value(form, "scopes")
+    let key = meta.create_api_key(name, if scopes == "" { "read" } else { scopes })
+    admin_keys_page_with_notice(conn, meta, "created key: " + key)
+    return
+  }
+  if request.meth is Post && path == "/admin/keys/revoke" {
+    let form = @utf8.decode_lossy(body.read_all().binary()[:])
+    let id = parse_nonnegative_int(form_value(form, "id"))
+    meta.revoke_api_key(id)
+    admin_keys_page_with_notice(conn, meta, "key revoked")
+    return
+  }
+  respond(conn, 404, "text/plain", "Not Found")
+}
+
+///|
+fn parse_nonnegative_int(value : String) -> Int {
+  let mut result = 0
+  for c in value {
+    if c < '0' || c > '9' {
+      return 0
+    }
+    result = result * 10 + (c.to_int() - '0'.to_int())
+  }
+  result
+}
+
+///|
+fn form_value(form : String, name : String) -> String {
+  for part in form.split("&") {
+    if part.has_prefix(name + "=") {
+      return part[name.length() + 1:].to_owned()
+    }
+  }
+  ""
+}
+
+///|
+fn admin_authenticated(request : @http.Request) -> Bool {
+  let expected = match @env.get_env_var("ADMIN_TOKEN") {
+    Some(value) => value
+    None => ""
+  }
+  if expected == "" {
+    return false
+  }
+  for key, value in request.headers {
+    if key == "cookie" || key == "Cookie" {
+      return value.contains("admin_token=" + expected)
+    }
+  }
+  false
+}
+
+///|
+async fn admin_login_page(conn : @http.ServerConnection, notice : String) -> Unit {
+  let page = "<!doctype html><html><body><h1>mbt-mdwiki admin</h1><p>" + notice + "</p><form method=\"post\" action=\"/admin/login\"><label>Admin token <input name=\"token\" type=\"password\"></label><button>Login</button></form></body></html>"
+  respond(conn, 200, "text/html; charset=utf-8", page)
+}
+
+///|
+async fn admin_keys_page(conn : @http.ServerConnection, meta : @lib.JsonMeta) -> Unit {
+  admin_keys_page_with_notice(conn, meta, "")
+}
+
+///|
+async fn admin_keys_page_with_notice(
+  conn : @http.ServerConnection,
+  meta : @lib.JsonMeta,
+  notice : String,
+) -> Unit {
+  let rows = StringBuilder()
+  for key in meta.list_api_keys() {
+    rows.write_string("<li>#")
+    rows.write_string(key.id.to_string())
+    rows.write_string(" ")
+    rows.write_string(key.name)
+    rows.write_string(" [")
+    rows.write_string(key.scopes)
+    rows.write_string("] <form method=\"post\" action=\"/admin/keys/revoke\" style=\"display:inline\"><input type=\"hidden\" name=\"id\" value=\"")
+    rows.write_string(key.id.to_string())
+    rows.write_string("\"><button>Revoke</button></form></li>")
+  }
+  let page = "<!doctype html><html><body><h1>API keys</h1><p>" + notice + "</p><ul>" + rows.to_string() + "</ul><h2>Create key</h2><form method=\"post\" action=\"/admin/keys\"><input name=\"name\" placeholder=\"name\"><select name=\"scopes\"><option value=\"read\">read</option><option value=\"read,write\">read,write</option></select><button>Create</button></form></body></html>"
+  respond(conn, 200, "text/html; charset=utf-8", page)
 }
 
 ///|
