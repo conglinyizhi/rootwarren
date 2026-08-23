@@ -585,6 +585,10 @@ async fn handle_admin(
     admin_keys_page(conn, meta)
     return
   }
+  if request.meth is Get && clean_path == "/admin/users" {
+    admin_users_page(conn, meta, "")
+    return
+  }
   if request.meth is Post && clean_path == "/admin/keys" {
     let form = @utf8.decode_lossy(body.read_all().binary()[:])
     let name = form_value(form, "name")
@@ -627,24 +631,31 @@ async fn handle_admin(
     }
     return
   }
-  if request.meth is Post && clean_path == "/admin/users/toggle" {
+  if request.meth is Post && clean_path == "/admin/users/update" {
     let form = @utf8.decode_lossy(body.read_all().binary()[:])
     let id = parse_nonnegative_int(form_value(form, "id"))
+    let role = form_value(form, "role")
+    let prefix = form_value(form, "write_prefix")
     let enabled = form_value(form, "enabled") == "true"
-    let users = meta.list_users()
-    meta.set_user_enabled(id, enabled)
-    if !enabled {
-      for user in users {
-        if user.id == id {
-          for token, subject in login_state.active_tokens {
-            if subject == user.username {
-              login_state.revoked[token] = true
+    if !valid_user_role(role) ||
+      (!prefix.is_empty() && !@lib.valid_slug(prefix)) {
+      admin_users_page(conn, meta, "权限或路径前缀无效")
+    } else if meta.update_user(id, role, prefix, enabled) {
+      if !enabled {
+        for user in meta.list_users() {
+          if user.id == id {
+            for token, subject in login_state.active_tokens {
+              if subject == user.username {
+                login_state.revoked[token] = true
+              }
             }
           }
         }
       }
+      admin_users_page(conn, meta, "用户已更新")
+    } else {
+      admin_users_page(conn, meta, "用户不存在")
     }
-    admin_keys_page_with_notice(conn, meta, "用户状态已更新")
     return
   }
   if request.meth is Post && clean_path == "/admin/auth" {
@@ -781,22 +792,23 @@ async fn admin_keys_page_with_notice(
 ) -> Unit {
   let rows = StringBuilder()
   let user_rows = StringBuilder()
-  for user in meta.list_users() {
+  let users = meta.list_users()
+  for i in 0..<users.length() {
+    if i >= 10 {
+      break
+    }
+    let user = users[i]
     user_rows.write_string(
-      "<li><strong>" +
+      "<tr><td>" +
       user.username +
-      "</strong> · " +
+      "</td><td>" +
       user.role +
-      " · " +
+      "</td><td>" +
+      (if user.write_prefix.is_empty() { "全部" } else { user.write_prefix }) +
+      "</td><td>" +
       (if user.enabled { "启用" } else { "禁用" }) +
-      " <form method=\"post\" action=\"/admin/users/toggle\" style=\"display:inline\"><input type=\"hidden\" name=\"id\" value=\"",
+      "</td></tr>",
     )
-    user_rows.write_string(user.id.to_string())
-    user_rows.write_string(
-      "\"><input type=\"hidden\" name=\"enabled\" value=\"",
-    )
-    user_rows.write_string(if user.enabled { "false" } else { "true" })
-    user_rows.write_string("\"><button>切换状态</button></form></li>")
   }
   let public = site_is_public(meta)
   let show_tree = site_show_tree(meta)
@@ -820,7 +832,7 @@ async fn admin_keys_page_with_notice(
   }
   let page = "<!doctype html><html lang=\"zh-CN\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>后台管理 - " +
     product_name +
-    "</title><style>body{font-family:Inter,\"Noto Sans SC\",sans-serif;max-width:1200px;margin:0 auto;padding:32px 20px;background:#111518;color:#d8dfda}h1{font-weight:500}.layout{display:grid;grid-template-columns:190px minmax(0,1fr);gap:24px}aside{position:sticky;top:20px;height:max-content;display:grid;gap:8px;padding:18px;background:#171c1a;border:1px solid #39463d;border-radius:6px}aside a{padding:8px 10px;border-radius:4px;color:#9fc4df;text-decoration:none}aside a:hover{background:#263322}main{min-width:0}section{border:1px solid #39463d;border-radius:6px;padding:22px;margin:18px 0;background:#171c1a}fieldset{border:1px solid #3d4d41;border-radius:4px;padding:14px;margin:14px 0}legend{color:#b9caa9;padding:0 6px}label{display:block;margin:10px 0;color:#c5cec7}button{padding:8px 12px;border:1px solid #718a61;border-radius:4px;background:#263322;color:#e4eedf}input,select{padding:8px;background:#111817;color:#e1e9e2;border:1px solid #48574d;border-radius:3px}li{margin:10px 0}@media(max-width:760px){body{padding:18px 12px}.layout{grid-template-columns:1fr;gap:12px}aside{position:static;grid-template-columns:repeat(2,minmax(0,1fr))}aside strong{grid-column:1/-1}}</style></head><body><div class=\"layout\"><aside><strong>" +
+    "</title><style>body{font-family:Inter,\"Noto Sans SC\",sans-serif;max-width:1200px;margin:0 auto;padding:32px 20px;background:#111518;color:#d8dfda}h1{font-weight:500}.layout{display:grid;grid-template-columns:190px minmax(0,1fr);gap:24px}aside{position:sticky;top:20px;height:max-content;display:grid;gap:8px;padding:18px;background:#171c1a;border:1px solid #39463d;border-radius:6px}aside a{padding:8px 10px;border-radius:4px;color:#9fc4df;text-decoration:none}aside a:hover{background:#263322}main{min-width:0}section{border:1px solid #39463d;border-radius:6px;padding:22px;margin:18px 0;background:#171c1a}fieldset{border:1px solid #3d4d41;border-radius:4px;padding:14px;margin:14px 0}legend{color:#b9caa9;padding:0 6px}label{display:grid;grid-template-columns:112px minmax(260px,420px);align-items:center;gap:12px;margin:10px 0;color:#c5cec7}label input,label select{min-width:260px;width:100%;box-sizing:border-box}.user-table{width:100%;border-collapse:collapse;margin:12px 0}.user-table th,.user-table td{text-align:left;padding:10px;border-bottom:1px solid #344139}.user-table th{color:#aebcae;font-weight:500}.section-link{display:inline-block;margin:10px 0;color:#9fc4df}button{padding:8px 12px;border:1px solid #718a61;border-radius:4px;background:#263322;color:#e4eedf}input,select{padding:8px;background:#111817;color:#e1e9e2;border:1px solid #48574d;border-radius:3px}li{margin:10px 0}@media(max-width:760px){body{padding:18px 12px}.layout{grid-template-columns:1fr;gap:12px}aside{position:static;grid-template-columns:repeat(2,minmax(0,1fr))}aside strong{grid-column:1/-1}}</style></head><body><div class=\"layout\"><aside><strong>" +
     product_name +
     "</strong><a href=\"#site\">网站设置</a><a href=\"#users\">用户与权限</a><a href=\"#keys\">API 密钥</a><a href=\"/\">返回网站</a></aside><main><h1>后台管理</h1><p>" +
     notice +
@@ -838,13 +850,68 @@ async fn admin_keys_page_with_notice(
     product_name +
     "\" placeholder=\"mbt-mdwiki\"></label><button>保存网站设置</button></form></section><section id=\"keys\"><h2>访问密钥</h2><ul>" +
     rows.to_string() +
-    "</ul><h3>创建新密钥</h3><form method=\"post\" action=\"/admin/keys\"><input name=\"name\" placeholder=\"密钥名称\"><select name=\"scopes\"><option value=\"read\">只读</option><option value=\"read,write\">读写</option></select><button>创建密钥</button></form></section><section id=\"users\"><h2>用户与权限</h2><ul>" +
+    "</ul><h3>创建新密钥</h3><form method=\"post\" action=\"/admin/keys\"><input name=\"name\" placeholder=\"密钥名称\"><select name=\"scopes\"><option value=\"read\">只读</option><option value=\"read,write\">读写</option></select><button>创建密钥</button></form></section><section id=\"users\"><h2>用户与权限</h2><table class=\"user-table\"><thead><tr><th>账号</th><th>权限</th><th>可写范围</th><th>状态</th></tr></thead><tbody>" +
     user_rows.to_string() +
-    "</ul><h3>创建账号</h3><form method=\"post\" action=\"/admin/users\"><label>用户名<input name=\"username\" required></label><label>密码<input name=\"password\" type=\"password\" minlength=\"12\" required></label><label>权限<select name=\"role\"><option value=\"read\">只读文档</option><option value=\"write\">可修改文档</option><option value=\"none\">禁止访问</option><option value=\"admin\">管理员</option></select></label><label>可写路径前缀<input name=\"write_prefix\" placeholder=\"例如 guide\"></label><button>创建用户</button></form></section><section><h2>管理员登录</h2><p>设置后使用这里配置的管理员用户名和 Admin Key 登录，默认用户名为 <code>" +
+    "</tbody></table><a class=\"section-link\" href=\"/admin/users\">查看全部用户与详情</a><h3>创建账号</h3><form method=\"post\" action=\"/admin/users\"><label>用户名<input name=\"username\" required></label><label>密码<input name=\"password\" type=\"password\" minlength=\"12\" required></label><label>权限<select name=\"role\"><option value=\"read\">只读文档</option><option value=\"write\">可修改文档</option><option value=\"none\">禁止访问</option><option value=\"admin\">管理员</option></select></label><label>可写路径前缀<input name=\"write_prefix\" placeholder=\"例如 guide\"></label><button>创建用户</button></form></section><section><h2>管理员登录</h2><p>设置后使用这里配置的管理员用户名和 Admin Key 登录，默认用户名为 <code>" +
     admin_username +
     "</code>。</p><form method=\"post\" action=\"/admin/auth\"><label>管理员用户名<input name=\"admin_username\" value=\"" +
     admin_username +
     "\" required></label><label>Admin Key<input name=\"admin_key\" type=\"password\" autocomplete=\"new-password\" placeholder=\"输入新的管理员 Admin Key\"></label><button>保存管理员凭据</button></form></section></main></div></body></html>"
+  respond(conn, 200, "text/html; charset=utf-8", page)
+}
+
+///|
+async fn admin_users_page(
+  conn : @http.ServerConnection,
+  meta : @lib.JsonMeta,
+  notice : String,
+) -> Unit {
+  let rows = StringBuilder()
+  for user in meta.list_users() {
+    rows.write_string(
+      "<tr><form method=\"post\" action=\"/admin/users/update\"><td>" +
+      user.username +
+      "<input type=\"hidden\" name=\"id\" value=\"",
+    )
+    rows.write_string(user.id.to_string())
+    rows.write_string("\"></td><td><select name=\"role\">")
+    for role in ["read", "write", "none", "admin"] {
+      let label = if role == "read" {
+        "只读"
+      } else if role == "write" {
+        "可编辑"
+      } else if role == "none" {
+        "禁止访问"
+      } else {
+        "管理员"
+      }
+      rows.write_string("<option value=\"" + role + "\"")
+      if user.role == role {
+        rows.write_string(" selected")
+      }
+      rows.write_string(">" + label + "</option>")
+    }
+    rows.write_string("</select></td><td><input name=\"write_prefix\" value=\"")
+    rows.write_string(user.write_prefix)
+    rows.write_string(
+      "\" placeholder=\"例如 guide\"></td><td><select name=\"enabled\"><option value=\"true\"",
+    )
+    if user.enabled {
+      rows.write_string(" selected")
+    }
+    rows.write_string(">启用</option><option value=\"false\"")
+    if !user.enabled {
+      rows.write_string(" selected")
+    }
+    rows.write_string(
+      ">禁用</option></select></td><td><button>保存</button></td></form></tr>",
+    )
+  }
+  let page = "<!doctype html><html lang=\"zh-CN\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>用户详情</title><style>body{font-family:Inter,\"Noto Sans SC\",sans-serif;max-width:1180px;margin:0 auto;padding:32px 20px;background:#111518;color:#d8dfda}a{color:#9fc4df}.notice{min-height:24px}.user-table{width:100%;border-collapse:collapse;background:#171c1a;border:1px solid #39463d}.user-table th,.user-table td{padding:10px;text-align:left;border-bottom:1px solid #344139}.user-table input,.user-table select{box-sizing:border-box;min-width:150px;width:100%;padding:8px;background:#111817;color:#e1e9e2;border:1px solid #48574d;border-radius:3px}.user-table button{padding:8px 12px;background:#263322;color:#e4eedf;border:1px solid #718a61;border-radius:4px}@media(max-width:760px){body{padding:18px 12px}.user-table{font-size:13px}.user-table th,.user-table td{padding:7px}.user-table input,.user-table select{min-width:110px}}</style></head><body><p><a href=\"/admin/keys#users\">返回后台概览</a></p><h1>全部用户</h1><p class=\"notice\">" +
+    notice +
+    "</p><table class=\"user-table\"><thead><tr><th>账号</th><th>权限</th><th>可写范围</th><th>状态</th><th></th></tr></thead><tbody>" +
+    rows.to_string() +
+    "</tbody></table></body></html>"
   respond(conn, 200, "text/html; charset=utf-8", page)
 }
 

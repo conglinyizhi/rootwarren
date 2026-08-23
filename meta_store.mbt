@@ -175,9 +175,9 @@ pub struct UserRecord {
   id : Int
   username : String
   password_hash : String
-  role : String
+  mut role : String
   mut enabled : Bool
-  write_prefix : String
+  mut write_prefix : String
 }
 
 ///|
@@ -280,18 +280,27 @@ pub async fn JsonMeta::create_user(
 }
 
 ///|
-pub async fn JsonMeta::set_user_enabled(
+pub async fn JsonMeta::update_user(
   self : JsonMeta,
   id : Int,
+  role : String,
+  write_prefix : String,
   enabled : Bool,
-) -> Unit {
+) -> Bool {
   let users = self.load_users()
+  let mut found = false
   for i in 0..<users.length() {
     if users[i].id == id {
+      users[i].role = role
+      users[i].write_prefix = write_prefix
       users[i].enabled = enabled
+      found = true
     }
   }
-  self.save_users(users)
+  if found {
+    self.save_users(users)
+  }
+  found
 }
 
 ///|
