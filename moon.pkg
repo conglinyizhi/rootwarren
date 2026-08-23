@@ -1,6 +1,8 @@
 import {
   "moonbitlang/async/fs",
   "moonbitlang/core/encoding/utf8",
+  "moonbitlang/core/encoding/base64",
+  "moonbitlang/core/bytes",
   "moonbitlang/core/env",
   "moonbitlang/core/json",
   "moonbitlang/core/random",

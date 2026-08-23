@@ -22,3 +22,113 @@ pub fn generate_api_key() -> String raise EntropyUnavailable {
     None => raise EntropyUnavailable::EntropyUnavailable
   }
 }
+
+///|
+pub trait LoginProvider {
+  fn authenticate(Self, username : String, password : String) -> Bool
+}
+
+///|
+pub struct AdminTokenProvider {
+  token : String
+}
+
+///|
+pub fn AdminTokenProvider::new(token : String) -> AdminTokenProvider {
+  { token, }
+}
+
+///|
+impl LoginProvider for AdminTokenProvider with fn authenticate(
+  self,
+  username,
+  password,
+) {
+  username == "admin" && !self.token.is_empty() && password == self.token
+}
+
+///|
+/// 当前本地账户 provider 的公开入口；未来 provider 可替换这一层。
+pub fn AdminTokenProvider::verify(
+  self : AdminTokenProvider,
+  username : String,
+  password : String,
+) -> Bool {
+  username == "admin" && !self.token.is_empty() && password == self.token
+}
+
+///|
+pub fn AdminTokenProvider::configured(self : AdminTokenProvider) -> Bool {
+  !self.token.is_empty()
+}
+
+///|
+/// 生成仅用于当前进程的随机签名密钥。
+pub fn generate_session_secret() -> String raise EntropyUnavailable {
+  match @env.rand(32) {
+    Some(bytes) => @crypto.bytes_to_hex_string(bytes)
+    None => raise EntropyUnavailable::EntropyUnavailable
+  }
+}
+
+///|
+/// 使用 HS256 生成 JWT。token 的有效期由进程内 session registry 控制。
+pub fn issue_jwt(secret : String, subject : String) -> String {
+  let header = base64url("{\"alg\":\"HS256\",\"typ\":\"JWT\"}")
+  let payload = base64url("{\"sub\":\"" + subject + "\"}")
+  let signing_input = header + "." + payload
+  let signature = @crypto.hmac(
+    @crypto.SHA256::new(),
+    @utf8.encode(secret).view(),
+    @utf8.encode(signing_input).view(),
+  )
+  signing_input + "." + base64url_bytes(signature)
+}
+
+///|
+pub fn verify_jwt(secret : String, token : String) -> String? {
+  let parts = token.split(".").to_array()
+  if parts.length() != 3 {
+    return None
+  }
+  let signing_input = parts[0].to_string() + "." + parts[1].to_string()
+  let expected = @crypto.hmac(
+    @crypto.SHA256::new(),
+    @utf8.encode(secret).view(),
+    @utf8.encode(signing_input).view(),
+  )
+  if base64url_bytes(expected) != parts[2].to_string() {
+    return None
+  }
+  let padded = parts[1].to_string()
+  let payload = @utf8.decode_lossy(
+    @base64.decode_lossy(
+      padded.replace_all(old="-", new="+").replace_all(old="_", new="/"),
+    ),
+  )
+  match payload.find("\"sub\":\"") {
+    Some(start) => {
+      let value = payload[start + 8:]
+      match value.find("\"") {
+        Some(end) => Some(value[:end].to_owned())
+        None => None
+      }
+    }
+    None => None
+  }
+}
+
+///|
+fn base64url(value : String) -> String {
+  @base64.encode(@utf8.encode(value).view(), padding=false)
+  .replace_all(old="+", new="-")
+  .replace_all(old="/", new="_")
+}
+
+///|
+fn base64url_bytes(value : FixedArray[Byte]) -> String {
+  let bytes = Bytes::from_array(value[:])
+  @base64.encode(bytes.view(), padding=false)
+  .replace_all(old="+", new="-")
+  .replace_all(old="/", new="_")
+}

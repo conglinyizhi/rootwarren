@@ -173,7 +173,7 @@ Each server start generates one random bootstrap URL printed only in the console
 http://127.0.0.1:8001/?api_key=mk_...
 ```
 
-The first request to that URL exchanges the key for an HttpOnly `mbt_session` cookie and returns `302 Location: /`. The bootstrap key is held only in process memory, is invalid after one exchange, and is not stored in `meta/api_keys.json`. The session expires when the server process stops. A normal API key still uses `Authorization: Bearer <key>`. The admin bootstrap URL is independent from client API keys: it exchanges for an HttpOnly `mbt_admin_session` cookie and does not create a persistent API key.
+The first request to that URL exchanges the key for an HttpOnly `mbt_session` cookie and returns `302 Location: /`. The bootstrap key is held only in process memory, is invalid after one exchange, and is not stored in `meta/api_keys.json`. The session expires when the server process stops. A normal API key still uses `Authorization: Bearer <key>`. The admin bootstrap URL is independent from client API keys: it always exists for each server process, exchanges for an HttpOnly `mbt_auth` JWT cookie, and does not create a persistent API key. The JWT is signed with an in-memory process secret, so it remains valid until logout or server shutdown. When `ADMIN_TOKEN` is configured, `/login` accepts username `admin` and that token as the password. When it is unset, use the admin bootstrap URL printed by the console; the bootstrap key is generated regardless of `ADMIN_TOKEN`.
 
 ## Public Browser View
 
@@ -186,7 +186,7 @@ The admin setting `site.public` controls anonymous reading:
 - `true` or unset: anonymous users can read rendered Markdown.
 - `false`: anonymous users receive `403`; an admin or client session can still read.
 
-The home page follows the same rule. In public mode it renders `content/index.md`; in private mode it requires a session. The page reads the same Markdown source as the API and renders HTML through CommonMark. Raw HTML from Markdown is rendered in safe mode. Relative Markdown links are intended to point to other Wiki pages.
+The site product name is configured as `site.title` from the admin page and is used in rendered page titles as `{document title} - {product name}`. The home page also renders front matter tags as visible tag chips. The home page follows the same rule. In public mode it renders `content/index.md`; in private mode it requires a session. The page reads the same Markdown source as the API and renders HTML through CommonMark. Raw HTML from Markdown is rendered in safe mode. Relative Markdown links are intended to point to other Wiki pages.
 
 ```sh
 xdg-open http://127.0.0.1:8001/d/index

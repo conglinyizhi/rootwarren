@@ -9,6 +9,7 @@ import {
   "moonbitlang/core/env",
   "moonbitlang/core/encoding/utf8",
   "moonbitlang/core/argparse",
+  "moonbitlang/core/encoding/base64",
   "moonbit-community/cmark/cmark_html",
 }
 
