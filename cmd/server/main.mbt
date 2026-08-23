@@ -5,7 +5,7 @@ async fn main {
   // 先加载 .env（shell 环境变量优先），再读取配置
   let env = @env.get_env_vars()
   load_dotenv(env)
-  let port = parse_port(env)
+  let port = cli_port(env)
   let admin_user = match meta.get_config("auth.admin_username") {
     Some(v) if !v.is_empty() => v
     _ => "operator"
@@ -322,6 +322,24 @@ async fn load_dotenv(env : Map[String, String]) -> Unit {
         _ => ()
       }
     }
+  }
+}
+
+///|
+/// 解析命令行 `--port` 参数（若提供则覆盖环境变量 PORT）。
+fn cli_port(env : Map[String, String]) -> UInt16 {
+  let args = @env.args()
+  let mut found : String = ""
+  let mut i = 0
+  while i < args.length() {
+    if args[i] == "--port" && i + 1 < args.length() {
+      found = args[i + 1]
+    }
+    i += 1
+  }
+  match found {
+    "" => parse_port(env)
+    v => @string.parse_uint(v).to_uint16() catch { _ => 8080 }
   }
 }
 
