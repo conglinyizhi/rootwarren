@@ -167,7 +167,7 @@ The client implementation brief is in [`docs/CLIENT.md`](CLIENT.md).
 
 ### Startup Admin URL
 
-Each server start generates one random, one-time admin URL printed only in the console. Opening it exchanges the key for an HttpOnly `mbt_auth` JWT Cookie and redirects to the admin page. The key does not create a persistent API key. The JWT uses an in-memory process secret and remains valid until logout or server shutdown. When `ADMIN_TOKEN` is configured, `/login` accepts username `admin` and that token as the password. When it is unset, use the admin URL printed by the console. Browser users no longer need a client bootstrap key. Normal API clients still use `Authorization: Bearer <api_key>`.
+Each server start generates one random, one-time admin URL printed only in the console. Opening it exchanges the key for an HttpOnly `mbt_auth` JWT Cookie and redirects to the admin page. The key does not create a persistent API key. The JWT uses an in-memory process secret and remains valid until logout or server shutdown. When `ADMIN_TOKEN` is configured, it provides the initial admin password for `/login`. After entering the backend, set a persistent Admin Key in the “管理员登录” section; only its SHA-256 hash is stored in `meta/config.json`. After that, `/login` accepts username `admin` and the persisted Admin Key. When no Admin Key is configured yet, use the one-time admin URL printed by the console to enter the backend and set one. Browser users no longer need a client bootstrap key. Normal API clients still use `Authorization: Bearer <api_key>`.
 
 ## Public Browser View
 

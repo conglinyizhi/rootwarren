@@ -41,7 +41,7 @@ make run ARGS="--ip 127.0.0.1 --port 9000"
 - `--ip` / `MBT_MDWIKI_IP` defaults to `0.0.0.0`.
 - `--port` / `PORT` defaults to `8001`.
 - `.env` is ignored by git; use `.env.example` as the template. Shell environment variables override `.env` values.
-- `ADMIN_TOKEN` enables fixed-token form login. If it is unset, use the one-time random admin URL printed at startup; do not expose that URL or token beyond the local console.
+- `ADMIN_TOKEN` provides the initial admin password. After entering the backend, set a persistent Admin Key from the administrator login section; only its SHA-256 hash is stored in `meta/config.json`. If no Admin Key is configured yet, use the one-time random admin URL printed at startup.
 - Use `make test` when tests exist. Run `moon fmt` after source changes.
 - For the client shell check: `curl http://127.0.0.1:8001/`.
 - For the public page check: `curl http://127.0.0.1:8001/d/index`.

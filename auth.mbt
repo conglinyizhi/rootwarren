@@ -30,12 +30,17 @@ pub trait LoginProvider {
 
 ///|
 pub struct AdminTokenProvider {
-  token : String
+  mut key_hash : String
 }
 
 ///|
 pub fn AdminTokenProvider::new(token : String) -> AdminTokenProvider {
-  { token, }
+  { key_hash: if token.is_empty() { "" } else { hash_api_key(token) } }
+}
+
+///|
+pub fn AdminTokenProvider::from_hash(key_hash : String) -> AdminTokenProvider {
+  { key_hash, }
 }
 
 ///|
@@ -44,7 +49,9 @@ impl LoginProvider for AdminTokenProvider with fn authenticate(
   username,
   password,
 ) {
-  username == "admin" && !self.token.is_empty() && password == self.token
+  username == "admin" &&
+  !self.key_hash.is_empty() &&
+  hash_api_key(password) == self.key_hash
 }
 
 ///|
@@ -54,12 +61,22 @@ pub fn AdminTokenProvider::verify(
   username : String,
   password : String,
 ) -> Bool {
-  username == "admin" && !self.token.is_empty() && password == self.token
+  username == "admin" &&
+  !self.key_hash.is_empty() &&
+  hash_api_key(password) == self.key_hash
 }
 
 ///|
 pub fn AdminTokenProvider::configured(self : AdminTokenProvider) -> Bool {
-  !self.token.is_empty()
+  !self.key_hash.is_empty()
+}
+
+///|
+pub fn AdminTokenProvider::set_key(
+  self : AdminTokenProvider,
+  key : String,
+) -> Unit {
+  self.key_hash = hash_api_key(key)
 }
 
 ///|

@@ -24,14 +24,17 @@ async fn main {
     session_token: @lib.generate_api_key(),
     consumed: false,
   }
+  let configured_admin_hash = match meta.get_config("auth.admin_key_hash") {
+    Some(value) => value
+    None =>
+      match env.get("ADMIN_TOKEN") {
+        Some(value) if !value.is_empty() => @lib.hash_api_key(value)
+        _ => ""
+      }
+  }
   let login_state : LoginState = {
     secret: @lib.generate_session_secret(),
-    provider: @lib.AdminTokenProvider::new(
-      match env.get("ADMIN_TOKEN") {
-        Some(value) => value
-        None => ""
-      },
-    ),
+    provider: @lib.AdminTokenProvider::from_hash(configured_admin_hash),
     revoked: Map([]),
   }
   let command = @argparse.Command(
@@ -94,7 +97,7 @@ async fn main {
     "后台地址（一次性登录）：http://127.0.0.1:\{port}/admin/login?admin_key=\{admin_session.bootstrap_key}",
   )
   println(
-    "ADMIN_TOKEN 表单登录：\{if login_state.provider.configured() { "已配置" } else { "未配置，请使用后台 admin key" }}",
+    "ADMIN_TOKEN 表单登录：\{if login_state.provider.configured() { "已配置" } else { "未配置，请先使用后台 admin URL 设置" }}",
   )
   println("REST API: http://127.0.0.1:\{port}/api/v1/docs")
   @signal.set_global_cancellation_signals([
@@ -257,7 +260,7 @@ async fn handle(
       login_page(
         conn,
         if !login_state.provider.configured() {
-          "当前未配置 ADMIN_TOKEN，请使用控制台打印的 admin key 登录。"
+          "当前未配置管理员 Admin Key，请先使用控制台打印的后台 admin URL 进入后台设置。"
         } else {
           "用户名或密码错误。"
         },
@@ -554,6 +557,21 @@ async fn handle_admin(
     admin_keys_page_with_notice(conn, meta, "密钥已吊销")
     return
   }
+  if request.meth is Post && clean_path == "/admin/auth" {
+    let form = @utf8.decode_lossy(body.read_all().binary()[:])
+    let new_key = form_value(form, "admin_key")
+    if new_key.trim().is_empty() {
+      admin_keys_page_with_notice(
+        conn, meta, "管理员 Admin Key 不能为空",
+      )
+    } else {
+      let key = new_key.trim().to_owned()
+      meta.set_config("auth.admin_key_hash", @lib.hash_api_key(key))
+      login_state.provider.set_key(key)
+      admin_keys_page_with_notice(conn, meta, "管理员 Admin Key 已保存")
+    }
+    return
+  }
   if request.meth is Post && clean_path == "/admin/site" {
     let form = @utf8.decode_lossy(body.read_all().binary()[:])
     let public = form_value(form, "public") == "true"
@@ -684,7 +702,7 @@ async fn admin_keys_page_with_notice(
     product_name +
     "\" placeholder=\"mbt-mdwiki\"></label><button>保存网站设置</button></form></section><section><h2>访问密钥</h2><ul>" +
     rows.to_string() +
-    "</ul><h3>创建新密钥</h3><form method=\"post\" action=\"/admin/keys\"><input name=\"name\" placeholder=\"密钥名称\"><select name=\"scopes\"><option value=\"read\">只读</option><option value=\"read,write\">读写</option></select><button>创建密钥</button></form></section></body></html>"
+    "</ul><h3>创建新密钥</h3><form method=\"post\" action=\"/admin/keys\"><input name=\"name\" placeholder=\"密钥名称\"><select name=\"scopes\"><option value=\"read\">只读</option><option value=\"read,write\">读写</option></select><button>创建密钥</button></form></section><section><h2>管理员登录</h2><p>设置后可使用用户名 <code>admin</code> 和该 Admin Key 登录。</p><form method=\"post\" action=\"/admin/auth\"><label>Admin Key<input name=\"admin_key\" type=\"password\" autocomplete=\"new-password\" placeholder=\"输入新的管理员 Admin Key\"></label><button>保存管理员凭据</button></form></section></body></html>"
   respond(conn, 200, "text/html; charset=utf-8", page)
 }
 
