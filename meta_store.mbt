@@ -31,6 +31,11 @@ fn JsonMeta::users_path(self : JsonMeta) -> String {
 }
 
 ///|
+fn JsonMeta::categories_path(self : JsonMeta) -> String {
+  self.dir + "/categories.json"
+}
+
+///|
 async fn JsonMeta::load_config(self : JsonMeta) -> Map[String, String] {
   let path = self.config_path()
   guard @fs.exists(path) else { return {} }
@@ -190,6 +195,83 @@ pub struct UserRecord {
   mut role : String
   mut enabled : Bool
   mut write_prefix : String
+}
+
+///|
+pub struct CategoryRecord {
+  id : Int
+  name : String
+  slug : String
+  parent_id : Int
+  description : String
+}
+
+///|
+async fn JsonMeta::load_categories(self : JsonMeta) -> Array[CategoryRecord] {
+  let path = self.categories_path()
+  guard @fs.exists(path) else { return [] }
+  let content = @utf8.decode_lossy(@fs.read_file(path).binary()[:])
+  let json = @json.parse(content) catch { _ => return [] }
+  let result : Array[CategoryRecord] = []
+  if json is Array(items) {
+    for item in items {
+      if item is Object(o) {
+        result.push({
+          id: json_int(o, "id"),
+          name: json_str(o, "name"),
+          slug: json_str(o, "slug"),
+          parent_id: json_int(o, "parent_id"),
+          description: json_str(o, "description"),
+        })
+      }
+    }
+  }
+  result
+}
+
+///|
+async fn JsonMeta::save_categories(self : JsonMeta, categories : Array[CategoryRecord]) -> Unit {
+  let items : Array[Json] = []
+  for c in categories {
+    items.push(Json::object({
+      "id": Json::number(c.id.to_double()),
+      "name": Json::string(c.name),
+      "slug": Json::string(c.slug),
+      "parent_id": Json::number(c.parent_id.to_double()),
+      "description": Json::string(c.description),
+    }))
+  }
+  let tmp = self.categories_path() + ".tmp"
+  @fs.write_file(tmp, Json::array(items).stringify(indent=2))
+  @fs.rename(tmp, self.categories_path(), replace=true)
+}
+
+///|
+pub async fn JsonMeta::list_categories(self : JsonMeta) -> Array[CategoryRecord] {
+  self.load_categories()
+}
+
+///|
+pub async fn JsonMeta::create_category(
+  self : JsonMeta,
+  name : String,
+  slug : String,
+  parent_id : Int,
+  description : String,
+) -> Bool {
+  let categories = self.load_categories()
+  for c in categories {
+    if c.slug == slug {
+      return false
+    }
+  }
+  let next_id = categories.fold(init=0, fn(max_id, c) {
+    if c.id > max_id { c.id } else { max_id }
+  }) +
+    1
+  categories.push({ id: next_id, name, slug, parent_id, description })
+  self.save_categories(categories)
+  true
 }
 
 ///|

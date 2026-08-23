@@ -291,6 +291,29 @@ async fn main {
       res.send_html(@moonback.Html::raw(page))
     })
 
+    ctx.get("/api/v1/categories", (_req, res) => {
+      let cats = category_list(storage, meta)
+      let items = cats.map(fn(c) {
+        Json::object({
+          "slug": Json::string(c.slug),
+          "name": Json::string(c.name),
+          "count": Json::number(c.count.to_double()),
+        })
+      })
+      res.send_json({ "categories": Json::array(items) })
+    })
+    ctx.get("/category/*slug", (req, res) => {
+      let slug = match req.params.get("slug") {
+        Some(s) => s.to_owned()
+        None => {
+          res.send_text("missing slug", status=400)
+          return
+        }
+      }
+      let page = render_category_page(storage, meta, slug)
+      res.send_html(@moonback.Html::raw(page))
+    })
+
     ctx.get("/api/v1/docs", (req, res) => {
       let perm = auth.docs_auth(meta, req)
       if !can_read(perm.scopes) {
@@ -675,4 +698,66 @@ fn build_breadcrumb(product_name : String, slug : String, title : String) -> Str
     }
     links
   }
+}
+
+///|
+struct CatInfo {
+  slug : String
+  name : String
+  count : Int
+}
+
+///|
+/// 聚合所有文档的分类，返回分类 + 文档计数。
+async fn category_list(storage : @lib.LocalStorage, meta : @lib.JsonMeta) -> Array[CatInfo] {
+  let counts : Map[String, Int] = Map([])
+  for slug in storage.list() {
+    match storage.read(slug) {
+      Some(raw) => {
+        let cat = @lib.document_meta(raw).category
+        if !cat.is_empty() {
+          counts[cat] = counts.get(cat).unwrap_or(0) + 1
+        }
+      }
+      None => ()
+    }
+  }
+  // 优先用已定义分类的 name；未定义分类用 slug 本身
+  let defined = meta.list_categories()
+  let result : Array[CatInfo] = []
+  for slug, count in counts {
+    let name = match defined.fold(init="", fn(acc, c) {
+      if c.slug == slug { c.name } else { acc }
+    }) {
+      "" => slug
+      n => n
+    }
+    result.push({ slug, name, count })
+  }
+  result
+}
+
+///|
+/// 渲染分类页：列出该分类下的全部文档。
+async fn render_category_page(
+  storage : @lib.LocalStorage,
+  meta : @lib.JsonMeta,
+  slug : String,
+) -> String {
+  let product_name = site_product_name(meta)
+  let items : Array[String] = []
+  for doc_slug in storage.list() {
+    match storage.read(doc_slug) {
+      Some(raw) => {
+        let dm = @lib.document_meta(raw)
+        if dm.category == slug && dm.status != "hidden" {
+          items.push("<li><a href=\"/d/" + doc_slug + "\">" + dm.title + "</a></li>")
+        }
+      }
+      None => ()
+    }
+  }
+  "<!doctype html><html><head><meta charset=\"utf-8\"><title>" + slug + " - " + product_name +
+  "</title><link rel=\"stylesheet\" href=\"/site.css\"></head><body><main class=\"reading-shell\"><div class=\"topbar\"><a href=\"/\">" + product_name +
+  "</a></div><h1>分类：" + slug + "</h1><ul>" + items.join("") + "</ul></main></body></html>"
 }

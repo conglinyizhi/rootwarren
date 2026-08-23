@@ -7,10 +7,12 @@ pub struct DocumentMeta {
   body : String
   title : String
   tags : String
+  status : String
+  category : String
 }
 
 ///|
-/// 解析 Markdown front matter（`title` / `tags`），返回结构体。
+/// 解析 Markdown front matter（`title` / `tags` / `status` / `category`），返回结构体。
 pub fn document_meta(raw : String) -> DocumentMeta {
   let fallback_title = match raw.find("# ") {
     Some(i) => {
@@ -23,25 +25,31 @@ pub fn document_meta(raw : String) -> DocumentMeta {
     None => "mbt-mdwiki"
   }
   if !raw.has_prefix("---\n") {
-    return { body: raw, title: fallback_title, tags: "" }
+    return { body: raw, title: fallback_title, tags: "", status: "public", category: "" }
   }
   let end = match raw.find("\n---\n") {
     Some(i) => i
-    None => return { body: raw, title: fallback_title, tags: "" }
+    None => return { body: raw, title: fallback_title, tags: "", status: "public", category: "" }
   }
   let header = raw[4:end]
   let body = raw[end + 5:].to_owned()
   let mut title = fallback_title
   let mut tags = ""
+  let mut status = "public"
+  let mut category = ""
   for line in header.split("\n") {
     let line = line.to_owned()
     if line.has_prefix("title:") {
       title = line[6:].trim().to_owned()
     } else if line.has_prefix("tags:") {
       tags = line[5:].trim().to_owned()
+    } else if line.has_prefix("status:") {
+      status = line[7:].trim().to_owned()
+    } else if line.has_prefix("category:") {
+      category = line[9:].trim().to_owned()
     }
   }
-  { body, title, tags }
+  { body, title, tags, status, category }
 }
 
 ///|
