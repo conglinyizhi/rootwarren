@@ -9,6 +9,7 @@ export MOON_CC ?= clang
 # warren 全栈开发模式（SSR + 前端水合 + moonback API + 热更新）
 dev:
 	$(MOON) build cmd/server --target native
+	rm -f public/index.js
 	warren dev --browser-entry cmd/browser --server-entry cmd/server --server-target native
 
 # 直接运行 native 全栈 server（不含热更新）

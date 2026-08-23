@@ -4,6 +4,7 @@
 // 因此写接口无需手动带 Authorization header。
 //
 // 前台文档站：文档列表 + 阅读(Markdown HTML via inner_html) + 登录 + 编辑/保存/删除。
+// active_html 只接收服务端 CMark 渲染结果；这里是受控的 Markdown HTML 边界。
 
 ///|
 using @rabbita {type Val, type Html, type Cmd, type Emit}
@@ -45,7 +46,6 @@ pub enum Msg {
   Logout
   Edit
   SetContent(String)
-  SetSlug(String)
   Save
   Delete
   ConfigLoaded(String)
@@ -91,7 +91,6 @@ pub struct Model {
   authed : Bool
   editing : Bool
   content : String
-  slug_input : String
   // 后台管理
   admin_view : Bool
   users : Array[String]
@@ -108,6 +107,7 @@ pub struct Model {
 } derive(Eq)
 
 ///|
+pub extend Model with Eq::{not_equal, equal}
 
 ///|
 /// 站点配置请求体。
@@ -120,6 +120,9 @@ pub struct SitePayload {
 } derive(ToJson)
 
 ///|
+pub extend SitePayload with ToJson::{to_json}
+
+///|
 /// API key 创建请求体。
 pub struct KeyPayload {
   name : String
@@ -127,6 +130,9 @@ pub struct KeyPayload {
   read_prefix : String
   write_prefix : String
 } derive(ToJson)
+
+///|
+pub extend KeyPayload with ToJson::{to_json}
 
 ///|
 pub fn initial_model() -> Model {
@@ -143,7 +149,6 @@ pub fn initial_model() -> Model {
     authed: false,
     editing: false,
     content: "",
-    slug_input: "",
     admin_view: false,
     users: [],
     site_title_input: "",
@@ -373,7 +378,6 @@ pub fn update(model : Model, msg : Msg, emit : Emit[Msg]) -> (Model, Cmd) {
     Edit =>
       ({ ..model, editing: true, content: model.active_html }, @rabbita.none)
     SetContent(content) => ({ ..model, content, }, @rabbita.none)
-    SetSlug(slug) => ({ ..model, slug_input: slug }, @rabbita.none)
     Save =>
       (
         { ..model, busy: true, status: "正在保存……" },
@@ -603,6 +607,7 @@ pub fn update(model : Model, msg : Msg, emit : Emit[Msg]) -> (Model, Cmd) {
 
 ///|
 /// 根组件：返回完整 HTML 结构，SSR 与浏览器水合共用。
+#warnings("-alert_xss_vulnerable")
 pub fn app() -> Val[Html] {
   let (model, emit) = @rabbita.create_state(initial_model(), update~, subscriptions=(
     model,

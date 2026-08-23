@@ -24,11 +24,6 @@ pub fn generate_api_key() -> String raise EntropyUnavailable {
 }
 
 ///|
-pub trait LoginProvider {
-  fn authenticate(Self, username : String, password : String) -> Bool
-}
-
-///|
 pub struct AdminTokenProvider {
   mut username : String
   mut key_hash : String
@@ -55,17 +50,6 @@ pub fn AdminTokenProvider::from_hash(
   key_hash : String,
 ) -> AdminTokenProvider {
   { username, key_hash }
-}
-
-///|
-impl LoginProvider for AdminTokenProvider with fn authenticate(
-  self,
-  username,
-  password,
-) {
-  username == self.username &&
-  !self.key_hash.is_empty() &&
-  hash_api_key(password) == self.key_hash
 }
 
 ///|
@@ -129,16 +113,16 @@ pub fn verify_jwt(secret : String, token : String) -> String? {
   if parts.length() != 3 {
     return None
   }
-  let signing_input = parts[0].to_string() + "." + parts[1].to_string()
+  let signing_input = parts[0].to_owned() + "." + parts[1].to_owned()
   let expected = @crypto.hmac(
     @crypto.SHA256::new(),
     @utf8.encode(secret).view(),
     @utf8.encode(signing_input).view(),
   )
-  if base64url_bytes(expected) != parts[2].to_string() {
+  if base64url_bytes(expected) != parts[2].to_owned() {
     return None
   }
-  let padded = parts[1].to_string()
+  let padded = parts[1].to_owned()
   let payload = @utf8.decode_lossy(
     @base64.decode_lossy(
       padded.replace_all(old="-", new="+").replace_all(old="_", new="/"),

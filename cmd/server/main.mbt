@@ -1,4 +1,5 @@
 ///|
+#warnings("-alert_experimental")
 async fn main {
   let storage = @lib.LocalStorage::new("content")
   let meta = @lib.JsonMeta::open("meta")
