@@ -28,8 +28,8 @@ pub fn AuthState::new(
 }
 
 ///|
-/// 从 Authorization header 提取 Bearer token（不含 "Bearer " 前缀）。
-pub fn bearer_token(req : @moonback.Request) -> String? {
+/// 从 Authorization header 或 Cookie 提取 token。
+pub fn request_token(req : @moonback.Request) -> String? {
   match req.headers.get("Authorization") {
     Some(raw) => {
       let raw = raw.to_owned()
@@ -40,7 +40,11 @@ pub fn bearer_token(req : @moonback.Request) -> String? {
         None
       }
     }
-    None => None
+    None =>
+      match req.cookie().get("mbt_auth") {
+        Some(c) => if c.is_empty() { None } else { Some(c) }
+        None => None
+      }
   }
 }
 
@@ -59,7 +63,7 @@ pub fn AuthState::subject_for(self : AuthState, token : String) -> String? {
 ///|
 /// 已登录且非撤销的 subject（用于权限判断）。
 pub fn AuthState::authenticate(self : AuthState, req : @moonback.Request) -> String? {
-  match bearer_token(req) {
+  match request_token(req) {
     Some(token) => self.subject_for(token)
     None => None
   }
@@ -122,7 +126,7 @@ pub fn AuthState::register_user(self : AuthState, user : @lib.UserRecord) -> Str
 ///|
 /// 登出：撤销 token。
 pub fn AuthState::logout(self : AuthState, req : @moonback.Request) -> Unit {
-  match bearer_token(req) {
+  match request_token(req) {
     Some(token) => {
       self.revoked[token] = true
       self.active_tokens.remove(token)

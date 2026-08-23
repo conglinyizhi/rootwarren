@@ -1,25 +1,38 @@
 // 共享前端组件包（js+native+wasm）。
-// 纯 UI：数据一律通过后端 REST API 获取，不 import 任何 native 库层，
-// 这样同一份组件既能被浏览器水合，也能被后端 SSR 渲染。
+// 纯 UI：数据一律通过后端 REST API 获取，不 import 任何 native 库层。
+// 认证走 cookie session（moonback 设置 HttpOnly cookie），浏览器 fetch 自动携带，
+// 因此写接口无需手动带 Authorization header。
 //
-// 前台文档阅读页：文档列表 + 阅读区（Markdown HTML via inner_html）+ 搜索。
+// 前台文档站：文档列表 + 阅读(Markdown HTML via inner_html) + 登录 + 编辑/保存/删除。
 
 ///|
 using @rabbita {type Val, type Html, type Cmd, type Emit}
 
 ///|
-using @html {body, button, div, h1, h2, head, html, input, link, p, title}
+using @html {body, button, div, h1, h2, head, html, input, link, p, span, textarea, title}
 
 
 ///|
 pub enum Msg {
-  LoadConfig
   LoadDocs
   SelectDoc(String)
   SetQuery(String)
+  SetLoginUser(String)
+  SetLoginPass(String)
+  Login
+  Logout
+  Edit
+  SetContent(String)
+  SetSlug(String)
+  Save
+  Delete
   ConfigLoaded(String)
   DocsLoaded(Result[String, Error])
   DocLoaded(String, Result[String, Error])
+  LoginDone(Result[String, Error])
+  MeLoaded(String)
+  SaveDone(Result[String, Error])
+  DeleteDone(Result[String, Error])
 }
 
 ///|
@@ -31,7 +44,22 @@ pub struct Model {
   query : String
   status : String
   busy : Bool
+  // 认证与编辑
+  authed : Bool
+  editing : Bool
+  content : String
+  login_user : String
+  login_pass : String
+  slug_input : String
 } derive(Eq)
+
+///|
+///|
+/// 登录请求体（ToJson 需要显式 record 类型）。
+pub struct LoginPayload {
+  username : String
+  password : String
+} derive(ToJson)
 
 ///|
 pub fn initial_model() -> Model {
@@ -41,8 +69,14 @@ pub fn initial_model() -> Model {
     active_slug: "",
     active_html: "",
     query: "",
-    status: "点击左侧文档开始阅读。",
+    status: "",
     busy: false,
+    authed: false,
+    editing: false,
+    content: "",
+    login_user: "",
+    login_pass: "",
+    slug_input: "",
   }
 }
 
@@ -89,36 +123,56 @@ fn parse_title(raw : String) -> String {
 ///|
 pub fn update(model : Model, msg : Msg, emit : Emit[Msg]) -> (Model, Cmd) {
   match msg {
-    LoadConfig =>
-      (
-        model,
-        @http.get("/api/v1/config").expect_text(emit.map(result => {
-          match result {
-            Ok(raw) => ConfigLoaded(parse_title(raw))
-            Err(_) => ConfigLoaded("mbt-mdwiki")
-          }
-        })),
-      )
-    ConfigLoaded(title) => ({ ..model, title }, @rabbita.none)
     LoadDocs =>
       (
         { ..model, busy: true, status: "正在加载文档……" },
         @rabbita.batch([
           @http.get("/api/v1/docs").expect_text(emit.map(result => DocsLoaded(result))),
-          @http.get("/api/v1/config").expect_text(emit.map(result => {
-            match result {
-              Ok(raw) => ConfigLoaded(parse_title(raw))
-              Err(_) => ConfigLoaded("mbt-mdwiki")
-            }
-          })),
+          @http.get("/api/v1/config").expect_text(emit.map(result => ConfigLoaded(match result {
+            Ok(raw) => parse_title(raw)
+            Err(_) => "mbt-mdwiki"
+          }))),
+          @http.get("/api/auth/me").expect_text(emit.map(result => MeLoaded(match result {
+            Ok(_) => "authed"
+            Err(_) => "anon"
+          }))),
         ]),
       )
     SelectDoc(slug) =>
       (
-        { ..model, busy: true, status: "正在打开 " + slug + "……" },
+        { ..model, busy: true, status: "正在打开 " + slug + "……", editing: false },
         @http.get("/api/v1/docs/" + slug).expect_text(emit.map(result => DocLoaded(slug, result))),
       )
     SetQuery(query) => ({ ..model, query }, @rabbita.none)
+    SetLoginUser(u) => ({ ..model, login_user: u }, @rabbita.none)
+    SetLoginPass(p) => ({ ..model, login_pass: p }, @rabbita.none)
+    Login =>
+      (
+        { ..model, busy: true, status: "正在登录……" },
+        @http.post("/api/auth/login").with_json(LoginPayload::{
+          username: model.login_user,
+          password: model.login_pass,
+        }).expect_text(emit.map(result => LoginDone(result))),
+      )
+    Logout =>
+      (
+        { ..model, busy: true, status: "正在退出……" },
+        @http.post("/api/auth/logout").expect_text(emit.map(_result => MeLoaded("anon"))),
+      )
+    Edit => ({ ..model, editing: true, content: model.active_html }, @rabbita.none)
+    SetContent(content) => ({ ..model, content }, @rabbita.none)
+    SetSlug(slug) => ({ ..model, slug_input: slug }, @rabbita.none)
+    Save =>
+      (
+        { ..model, busy: true, status: "正在保存……" },
+        @http.put("/api/v1/docs/" + model.active_slug).with_text(model.content).expect_text(emit.map(result => SaveDone(result))),
+      )
+    Delete =>
+      (
+        { ..model, busy: true, status: "正在删除……" },
+        @http.delete("/api/v1/docs/" + model.active_slug).expect_text(emit.map(result => DeleteDone(result))),
+      )
+    ConfigLoaded(title) => ({ ..model, title }, @rabbita.none)
     DocsLoaded(result) =>
       (
         {
@@ -152,6 +206,48 @@ pub fn update(model : Model, msg : Msg, emit : Emit[Msg]) -> (Model, Cmd) {
         },
         @rabbita.none,
       )
+    LoginDone(result) =>
+      (
+        {
+          ..model,
+          busy: false,
+          authed: result is Ok(_),
+          status: match result {
+            Ok(_) => "登录成功。"
+            Err(_) => "登录失败：请检查用户名/密码。"
+          },
+        },
+        @rabbita.none,
+      )
+    MeLoaded(kind) =>
+      ({ ..model, authed: kind == "authed", busy: false }, @rabbita.none)
+    SaveDone(result) =>
+      (
+        {
+          ..model,
+          busy: false,
+          editing: false,
+          status: match result {
+            Ok(_) => "已保存。"
+            Err(_) => "保存失败：需要登录且有写权限。"
+          },
+        },
+        @rabbita.none,
+      )
+    DeleteDone(result) =>
+      (
+        {
+          ..model,
+          busy: false,
+          active_slug: "",
+          active_html: "",
+          status: match result {
+            Ok(_) => "已删除。"
+            Err(_) => "删除失败。"
+          },
+        },
+        @rabbita.none,
+      )
   }
 }
 
@@ -168,6 +264,32 @@ pub fn app() -> Val[Html] {
         slug,
       )
     })
+    let auth_ui = if model.authed {
+      div(class="auth-bar", [
+        span("已登录"),
+        button(on_click=emit(Logout), attrs=@html.Attrs::build().data_set("name", "logout-button"), "退出"),
+      ])
+    } else {
+      div(class="auth-bar", [
+        input(placeholder="用户名", value=model.login_user, on_input=text => emit(SetLoginUser(text)), attrs=@html.Attrs::build().data_set("name", "login-user")),
+        input(input_type=@html.Password, placeholder="密码", value=model.login_pass, on_input=text => emit(SetLoginPass(text)), attrs=@html.Attrs::build().data_set("name", "login-pass")),
+        button(on_click=emit(Login), attrs=@html.Attrs::build().data_set("name", "login-button"), "登录"),
+      ])
+    }
+    let editor = if model.editing {
+      div(class="editor", [
+        textarea(rows=20, placeholder="Markdown 正文", value=model.content, on_input=text => emit(SetContent(text)), attrs=@html.Attrs::build().data_set("name", "markdown-editor"), @html.nothing),
+        div(class="editor-actions", [
+          button(on_click=emit(Save), attrs=@html.Attrs::build().data_set("name", "save-button"), "保存"),
+          button(on_click=emit(Delete), attrs=@html.Attrs::build().data_set("name", "delete-button"), "删除"),
+        ]),
+      ])
+    } else {
+      div(class="readonly", [
+        div(attrs=@html.Attrs::build().data_set("name", "document-content").inner_html(model.active_html), @html.nothing),
+        button(on_click=emit(Edit), attrs=@html.Attrs::build().data_set("name", "edit-button"), "编辑"),
+      ])
+    }
     html <| [
       head([
         link(rel="stylesheet", href="/site.css"),
@@ -177,20 +299,10 @@ pub fn app() -> Val[Html] {
         div(class="reading-shell") <| [
           div(class="topbar", [
             h1(model.title + " 文档站"),
-            button(
-              class="button",
-              on_click=emit(LoadDocs),
-              attrs=@html.Attrs::build().data_set("name", "load-documents-button"),
-              "加载文档",
-            ),
-            input(
-              input_type=@html.InputType::Search,
-              placeholder="搜索文档",
-              value=model.query,
-              on_input=text => emit(SetQuery(text)),
-              attrs=@html.Attrs::build().data_set("name", "search-input"),
-            ),
+            button(class="button", on_click=emit(LoadDocs), attrs=@html.Attrs::build().data_set("name", "load-documents-button"), "加载文档"),
+            input(input_type=@html.InputType::Search, placeholder="搜索文档", value=model.query, on_input=text => emit(SetQuery(text)), attrs=@html.Attrs::build().data_set("name", "search-input")),
           ]),
+          auth_ui,
           p(model.status),
           div(class="workspace", [
             div(class="sidebar", [
@@ -200,10 +312,7 @@ pub fn app() -> Val[Html] {
             ]),
             div(class="editor-panel", [
               h2(if model.active_slug.is_empty() { "阅读文档" } else { model.active_slug }),
-              div(
-                attrs=@html.Attrs::build().data_set("name", "document-content").inner_html(model.active_html),
-                @html.nothing,
-              ),
+              editor,
             ]),
           ]),
         ],

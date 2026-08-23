@@ -27,18 +27,26 @@ async fn main {
     ctx.post("/api/auth/login", (req, res) => {
       let body = req.body.text()
       let (username, password) = parse_login(body)
-      if auth.admin_login(username, password) is Some(token) {
-        res.send_json({ "token": Json::string(token), "role": Json::string("admin") })
-      } else if auth.register_user(match meta.verify_user(username, password) {
-        Some(user) => user
-        None => {
-          res.send_json({ "error": Json::string("invalid credentials") }, status=401)
-          return
-        }
-      }) is Some(token) {
-        res.send_json({ "token": Json::string(token), "role": Json::string("user") })
+      let result = if auth.admin_login(username, password) is Some(token) {
+        Some((token, "admin"))
       } else {
-        res.send_json({ "error": Json::string("invalid credentials") }, status=401)
+        match meta.verify_user(username, password) {
+          Some(user) => match auth.register_user(user) {
+            Some(token) => Some((token, "user"))
+            None => None
+          }
+          None => None
+        }
+      }
+      match result {
+        Some((token, role)) => {
+          let cookie = "mbt_auth=" + token + "; Path=/; HttpOnly; SameSite=Lax"
+          res.send_json(
+            { "token": Json::string(token), "role": Json::string(role) },
+            headers=[("Set-Cookie", cookie)],
+          )
+        }
+        None => res.send_json({ "error": Json::string("invalid credentials") }, status=401)
       }
     })
     ctx.post("/api/auth/logout", (req, res) => {
