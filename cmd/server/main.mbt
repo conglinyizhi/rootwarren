@@ -12,7 +12,7 @@ async fn main {
       let items = slugs.map(fn(slug) { Json::string(slug) })
       res.send_json({ "docs": Json::array(items) })
     })
-    ctx.get("/api/v1/docs/:slug", (req, res) => {
+    ctx.get("/api/v1/docs/*slug", (req, res) => {
       let slug = match req.params.get("slug") {
         Some(s) => s.to_owned()
         None => {
@@ -29,6 +29,46 @@ async fn main {
           res.send_json({ "error": Json::string("not found") }, status=404)
         }
       }
+    })
+    ctx.add_route(@http.RequestMethod::Put, "/api/v1/docs/*slug", (req, res) => {
+      let slug = match req.params.get("slug") {
+        Some(s) => s.to_owned()
+        None => {
+          res.send_text("missing slug", status=400)
+          return
+        }
+      }
+      if !@lib.valid_slug(slug) {
+        res.send_text("invalid slug", status=400)
+        return
+      }
+      let content = req.body.text()
+      let success = try {
+        storage.write(slug, content)
+        true
+      } catch {
+        _ => false
+      }
+      if success {
+        res.send_json({ "ok": Json::boolean(true) })
+      } else {
+        res.send_text("invalid slug", status=400)
+      }
+    })
+    ctx.add_route(@http.RequestMethod::Delete, "/api/v1/docs/*slug", (req, res) => {
+      let slug = match req.params.get("slug") {
+        Some(s) => s.to_owned()
+        None => {
+          res.send_text("missing slug", status=400)
+          return
+        }
+      }
+      if !@lib.valid_slug(slug) {
+        res.send_text("invalid slug", status=400)
+        return
+      }
+      storage.delete(slug)
+      res.send_json({ "ok": Json::boolean(true) })
     })
   })
 
