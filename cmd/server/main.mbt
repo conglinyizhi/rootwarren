@@ -129,6 +129,17 @@ async fn main {
       res.send_json({ "ok": Json::boolean(true) })
     })
 
+    ctx.get("/llms.txt", (_req, res) => {
+      let mode = site_llms_mode(meta)
+      if mode == "public" {
+        res.send_text(serve_llms(storage, ""))
+      } else if mode == "partial" {
+        res.send_text(serve_llms(storage, site_llms_prefixes(meta)))
+      } else {
+        res.send_void(status=404)
+      }
+    })
+
     ctx.get("/api/v1/config", (_req, res) => {
       let product_name = match meta.get_config("site.title") {
         Some(v) if !v.is_empty() => v
@@ -138,6 +149,11 @@ async fn main {
     })
     // 服务端渲染阅读页（面包屑 + 文档树 + tags + title）
     ctx.get("/d/*slug", (req, res) => {
+      // 公私有控制：site.public=false 且未登录时匿名读 403
+      if !site_is_public(meta) && auth.authenticate(req) is None {
+        res.send_text("site is private; login required", status=403)
+        return
+      }
       let slug = match req.params.get("slug") {
         Some(s) => s.to_owned()
         None => {
@@ -379,6 +395,63 @@ async fn render_doc_page(
     None =>
       "<!doctype html><html><head><meta charset=\"utf-8\"><title>文档不存在</title></head><body><p>文档不存在</p></body></html>"
   }
+}
+
+///|
+async fn site_is_public(meta : @lib.JsonMeta) -> Bool {
+  match meta.get_config("site.public") {
+    Some(v) if v == "false" => false
+    _ => true
+  }
+}
+
+///|
+async fn site_llms_mode(meta : @lib.JsonMeta) -> String {
+  match meta.get_config("site.llms_mode") {
+    Some(value) => value
+    None => "public"
+  }
+}
+
+///|
+async fn site_llms_prefixes(meta : @lib.JsonMeta) -> String {
+  match meta.get_config("site.llms_prefixes") {
+    Some(value) => value
+    None => ""
+  }
+}
+
+///|
+/// 生成 llms.txt 内容（Markdown 索引）。prefixes 为空时全部收录。
+async fn serve_llms(storage : @lib.LocalStorage, prefixes : String) -> String {
+  let output = StringBuilder()
+  output.write_string("# mbt-mdwiki\n\n")
+  output.write_string("这是一个由 MoonBit 驱动的 Markdown Wiki。\n\n")
+  for slug in storage.list() {
+    let allowed = prefixes.is_empty() ||
+      prefixes.split(",").any(fn(prefix) {
+        let prefix = prefix.trim().to_owned()
+        slug == prefix || slug.has_prefix(prefix + "/")
+      })
+    if !allowed { continue }
+    match storage.read(slug) {
+      Some(raw) => {
+        let meta = @lib.document_meta(raw)
+        output.write_string("- [")
+        output.write_string(meta.title)
+        output.write_string("](/d/")
+        output.write_string(slug)
+        output.write_string(")")
+        if !meta.tags.is_empty() {
+          output.write_string(" #")
+          output.write_string(meta.tags.replace(old=", ", new=" #").replace(old=",", new=" "))
+        }
+        output.write_string("\n")
+      }
+      None => ()
+    }
+  }
+  output.to_string()
 }
 
 ///|
