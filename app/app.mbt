@@ -9,7 +9,7 @@
 using @rabbita {type Val, type Html, type Cmd, type Emit}
 
 ///|
-using @html {body, button, div, h1, h2, head, html, input, link, p, span, textarea, title}
+using @html {body, button, div, h1, h2, h3, head, html, input, label, li, link, p, section, span, textarea, title, ul}
 
 
 ///|
@@ -33,6 +33,14 @@ pub enum Msg {
   MeLoaded(String)
   SaveDone(Result[String, Error])
   DeleteDone(Result[String, Error])
+  // 后台管理
+  ShowAdmin
+  HideAdmin
+  AdminUsersLoaded(Result[String, Error])
+  AdminSiteLoaded(Result[String, Error])
+  SetSiteTitle(String)
+  SaveSite
+  SiteSaved(Result[String, Error])
 }
 
 ///|
@@ -51,6 +59,10 @@ pub struct Model {
   login_user : String
   login_pass : String
   slug_input : String
+  // 后台管理
+  admin_view : Bool
+  users : Array[String]
+  site_title_input : String
 } derive(Eq)
 
 ///|
@@ -59,6 +71,16 @@ pub struct Model {
 pub struct LoginPayload {
   username : String
   password : String
+} derive(ToJson)
+
+///|
+/// 站点配置请求体。
+pub struct SitePayload {
+  title : String
+  public : String
+  show_tree : String
+  llms_mode : String
+  llms_prefixes : String
 } derive(ToJson)
 
 ///|
@@ -77,6 +99,9 @@ pub fn initial_model() -> Model {
     login_user: "",
     login_pass: "",
     slug_input: "",
+    admin_view: false,
+    users: [],
+    site_title_input: "",
   }
 }
 
@@ -110,6 +135,39 @@ fn parse_html(raw : String) -> String {
 
 ///|
 fn parse_title(raw : String) -> String {
+  let json = @json.parse(raw) catch { _ => return "mbt-mdwiki" }
+  match json {
+    Json::Object(map) => match map.get("title") {
+      Some(Json::String(title)) => title
+      _ => "mbt-mdwiki"
+    }
+    _ => "mbt-mdwiki"
+  }
+}
+
+///|
+fn parse_users(raw : String) -> Array[String] {
+  let json = @json.parse(raw) catch { _ => return [] }
+  let result : Array[String] = []
+  if json is Json::Object(map) {
+    if map.get("users") is Some(Json::Array(items)) {
+      for item in items {
+        if item is Json::Object(u) {
+          result.push(
+            match u.get("username") {
+              Some(Json::String(name)) => name
+              _ => ""
+            },
+          )
+        }
+      }
+    }
+  }
+  result
+}
+
+///|
+fn parse_site_title(raw : String) -> String {
   let json = @json.parse(raw) catch { _ => return "mbt-mdwiki" }
   match json {
     Json::Object(map) => match map.get("title") {
@@ -248,6 +306,67 @@ pub fn update(model : Model, msg : Msg, emit : Emit[Msg]) -> (Model, Cmd) {
         },
         @rabbita.none,
       )
+    ShowAdmin =>
+      (
+        { ..model, admin_view: true, busy: true, status: "正在加载后台数据……" },
+        @rabbita.batch([
+          @http.get("/api/admin/users").expect_text(emit.map(result => AdminUsersLoaded(result))),
+          @http.get("/api/admin/site").expect_text(emit.map(result => AdminSiteLoaded(result))),
+        ]),
+      )
+    HideAdmin => ({ ..model, admin_view: false }, @rabbita.none)
+    AdminUsersLoaded(result) =>
+      (
+        {
+          ..model,
+          busy: false,
+          users: match result {
+            Ok(raw) => parse_users(raw)
+            Err(_) => []
+          },
+          status: match result {
+            Ok(_) => "后台已加载。"
+            Err(_) => "后台加载失败：需要管理员权限。"
+          },
+        },
+        @rabbita.none,
+      )
+    AdminSiteLoaded(result) =>
+      (
+        {
+          ..model,
+          site_title_input: match result {
+            Ok(raw) => parse_site_title(raw)
+            Err(_) => model.title
+          },
+        },
+        @rabbita.none,
+      )
+    SetSiteTitle(t) => ({ ..model, site_title_input: t }, @rabbita.none)
+    SaveSite =>
+      (
+        { ..model, busy: true, status: "正在保存站点设置……" },
+        @http.post("/api/admin/site").with_json(SitePayload::{
+          title: model.site_title_input,
+          public: "true",
+          show_tree: "true",
+          llms_mode: "public",
+          llms_prefixes: "",
+        }).expect_text(emit.map(result => SiteSaved(result))),
+      )
+    SiteSaved(result) =>
+      (
+        {
+          ..model,
+          busy: false,
+          title: model.site_title_input,
+          status: match result {
+            Ok(_) => "站点设置已保存。"
+            Err(_) => "保存失败。"
+          },
+        },
+        @rabbita.none,
+      )
   }
 }
 
@@ -267,6 +386,7 @@ pub fn app() -> Val[Html] {
     let auth_ui = if model.authed {
       div(class="auth-bar", [
         span("已登录"),
+        button(on_click=emit(ShowAdmin), attrs=@html.Attrs::build().data_set("name", "admin-button"), "管理"),
         button(on_click=emit(Logout), attrs=@html.Attrs::build().data_set("name", "logout-button"), "退出"),
       ])
     } else {
@@ -276,6 +396,26 @@ pub fn app() -> Val[Html] {
         button(on_click=emit(Login), attrs=@html.Attrs::build().data_set("name", "login-button"), "登录"),
       ])
     }
+    let admin_panel = div(class="admin-panel", [
+      div(class="admin-header", [
+        h2("后台管理"),
+        button(on_click=emit(HideAdmin), attrs=@html.Attrs::build().data_set("name", "admin-back-button"), "返回文档站"),
+      ]),
+      section(class="admin-section", [
+        h3("用户列表"),
+        ul(
+          model.users.map(fn(u) { li(u) }),
+        ),
+      ]),
+      section(class="admin-section", [
+        h3("站点设置"),
+        label(for_="site-title", "产品名"),
+        div(class="field", [
+          input(id="site-title", value=model.site_title_input, on_input=text => emit(SetSiteTitle(text)), attrs=@html.Attrs::build().data_set("name", "site-title-input")),
+          button(on_click=emit(SaveSite), attrs=@html.Attrs::build().data_set("name", "save-site-button"), "保存站点设置"),
+        ]),
+      ]),
+    ])
     let editor = if model.editing {
       div(class="editor", [
         textarea(rows=20, placeholder="Markdown 正文", value=model.content, on_input=text => emit(SetContent(text)), attrs=@html.Attrs::build().data_set("name", "markdown-editor"), @html.nothing),
@@ -290,6 +430,19 @@ pub fn app() -> Val[Html] {
         button(on_click=emit(Edit), attrs=@html.Attrs::build().data_set("name", "edit-button"), "编辑"),
       ])
     }
+    let active_title = if model.active_slug.is_empty() { "阅读文档" } else { model.active_slug }
+    let workspace_view = div(class="workspace", [
+      div(class="sidebar", [
+        h2("文档导航"),
+        p(model.slugs.length().to_string() + " 篇文档"),
+        div(attrs=@html.Attrs::build().data_set("name", "document-list"), doc_buttons),
+      ]),
+      div(class="editor-panel", [
+        h2(active_title),
+        editor,
+      ]),
+    ])
+    let content_area = if model.admin_view { admin_panel } else { workspace_view }
     html <| [
       head([
         link(rel="stylesheet", href="/site.css"),
@@ -304,17 +457,7 @@ pub fn app() -> Val[Html] {
           ]),
           auth_ui,
           p(model.status),
-          div(class="workspace", [
-            div(class="sidebar", [
-              h2("文档导航"),
-              p(model.slugs.length().to_string() + " 篇文档"),
-              div(attrs=@html.Attrs::build().data_set("name", "document-list"), doc_buttons),
-            ]),
-            div(class="editor-panel", [
-              h2(if model.active_slug.is_empty() { "阅读文档" } else { model.active_slug }),
-              editor,
-            ]),
-          ]),
+          content_area,
         ],
       ],
     ]
