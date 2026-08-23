@@ -174,6 +174,38 @@ POST /api/admin/site                save site config {title,public,show_tree,llm
 
 Roles: `superadmin` can manage any account; `admin` cannot create/edit/reset a `superadmin`. `site.public=false` blocks anonymous reads of `/d/` and `/`.
 
+## Document Metadata (Typecho-style)
+
+Documents use Markdown front matter (a `---\n...\n---` block at the top) with Typecho-like fields:
+
+```yaml
+---
+title: 分类文章
+tags: guide, moonbit
+status: public      # public | private | hidden | draft
+category: guide     # classification slug
+---
+# 正文...
+```
+
+`GET /api/v1/docs/{slug}` returns `slug`, rendered `html`, `category`, and `status`.
+
+## Categories
+
+```http
+GET /api/v1/categories          list categories with document counts
+GET /category/{slug}            SSR category page (lists its documents)
+GET /posts/{slug}               SSR permalink alias (same content as /d/{slug})
+```
+
+## RSS / Atom
+
+```http
+GET /feed
+```
+
+Returns an RSS 2.0 feed (`application/rss+xml`) walking all public documents' titles, links, and tags.
+
 ## llms.txt
 
 ```http
