@@ -7,13 +7,17 @@ export MOON_CC ?= clang
 .PHONY: run build build-frontend test check fmt clean init-env dev
 
 # warren 全栈开发模式（SSR + 前端水合 + moonback API + 热更新）
+# 先确保 .env 存在：缺失时自动生成随机 ADMIN_TOKEN 并打印登录凭据（开发环境）。
 dev:
 	$(MOON) build cmd/server --target native
+	@bash scripts/env-prep.sh
 	rm -f public/index.js
 	warren dev --browser-entry cmd/browser --server-entry cmd/server --server-target native
 
 # 直接运行 native 全栈 server（不含热更新）
+# 生产/正式：要求 .env 已配置；缺失时给出指引并退出，不自动生成。
 run:
+	@bash scripts/env-prep.sh --require
 	$(MOON) run cmd/server -- $(ARGS)
 
 # 构建 native server + 前端水合 bundle

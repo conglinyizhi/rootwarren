@@ -26,11 +26,19 @@ public/         静态资源（index.js 由 warren 生成，勿提交）
 
 ```sh
 make check            # 类型检查全部 target
-cp .env.example .env  # 编辑 ADMIN_TOKEN
-make dev              # 起 warren 全栈 dev server（SSR + 水合 + 热更新，端口 4300）
+make dev              # 自动准备 .env + 起 warren 全栈 dev server（端口 4300）
 ```
 
-访问 `http://127.0.0.1:4300/`，后台登录用户名默认 `operator`，密码为 `.env` 的 `ADMIN_TOKEN`。
+访问 `http://127.0.0.1:4300/`。
+
+**开发环境登录**：`make dev` 会在 `.env` 缺失时自动生成一个（含随机 `ADMIN_TOKEN`），并在终端打印一次登录凭据。之后登录后台：
+
+```text
+用户名: operator
+密码:   <make dev 自动生成的随机值，见 .env 的 ADMIN_TOKEN>
+```
+
+> `make dev` 是自动生成（测试/开发即开即用）；**生产/正式**请用 `make run`，它要求先手动配置 `.env`，缺失时会给出指引并退回，不自动生成。
 
 ## 构建 / 测试
 
@@ -40,6 +48,30 @@ make test            # 运行测试（当前无测试入口）
 make init-env        # 生成 .env 模板（不覆盖已有）
 moon fmt             # 格式化
 ```
+
+## 登录与配置
+
+后端登录凭据由 `.env` 提供（`ADMIN_TOKEN`=初始密码，用户名固定 `operator`）。`.env` 是 gitignored 的本地配置。
+
+- **开发/测试**：运行 `make dev`，若 `.env` 不存在会自动生成（随机强密码），首次生成会在终端打印登录凭据；`.env` 已存在则复用、不覆盖。
+- **生产/正式**：运行 `make run`，若 `.env` 缺失会打印配置指引并退出。请先手动配置：
+
+```sh
+cp .env.example .env
+# 编辑 .env，把 ADMIN_TOKEN 设成强密码
+openssl rand -hex 16   # 可用于生成强密码
+make run
+```
+
+配置说明：
+
+| 键 | 含义 |
+| --- | --- |
+| `ADMIN_TOKEN` | 后台初始登录密码（用户名固定 `operator`），登录后可在后台改为持久密钥 |
+| `MBT_MDWIKI_IP` | `make run` 监听地址 |
+| `PORT` | `make run` 端口（`warren dev` 固定用 4300） |
+
+> 环境变量优先于 `.env`：若在 shell 已设置同名变量，则 `.env` 不覆盖它。
 
 ## 能力
 
