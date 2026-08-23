@@ -13,15 +13,18 @@ using @html {body, button, div, h1, h2, head, html, input, link, p, title}
 
 ///|
 pub enum Msg {
+  LoadConfig
   LoadDocs
   SelectDoc(String)
   SetQuery(String)
+  ConfigLoaded(String)
   DocsLoaded(Result[String, Error])
   DocLoaded(String, Result[String, Error])
 }
 
 ///|
 pub struct Model {
+  title : String
   slugs : Array[String]
   active_slug : String
   active_html : String
@@ -33,6 +36,7 @@ pub struct Model {
 ///|
 pub fn initial_model() -> Model {
   {
+    title: "mbt-mdwiki",
     slugs: [],
     active_slug: "",
     active_html: "",
@@ -71,12 +75,43 @@ fn parse_html(raw : String) -> String {
 }
 
 ///|
+fn parse_title(raw : String) -> String {
+  let json = @json.parse(raw) catch { _ => return "mbt-mdwiki" }
+  match json {
+    Json::Object(map) => match map.get("title") {
+      Some(Json::String(title)) => title
+      _ => "mbt-mdwiki"
+    }
+    _ => "mbt-mdwiki"
+  }
+}
+
+///|
 pub fn update(model : Model, msg : Msg, emit : Emit[Msg]) -> (Model, Cmd) {
   match msg {
+    LoadConfig =>
+      (
+        model,
+        @http.get("/api/v1/config").expect_text(emit.map(result => {
+          match result {
+            Ok(raw) => ConfigLoaded(parse_title(raw))
+            Err(_) => ConfigLoaded("mbt-mdwiki")
+          }
+        })),
+      )
+    ConfigLoaded(title) => ({ ..model, title }, @rabbita.none)
     LoadDocs =>
       (
         { ..model, busy: true, status: "正在加载文档……" },
-        @http.get("/api/v1/docs").expect_text(emit.map(result => DocsLoaded(result))),
+        @rabbita.batch([
+          @http.get("/api/v1/docs").expect_text(emit.map(result => DocsLoaded(result))),
+          @http.get("/api/v1/config").expect_text(emit.map(result => {
+            match result {
+              Ok(raw) => ConfigLoaded(parse_title(raw))
+              Err(_) => ConfigLoaded("mbt-mdwiki")
+            }
+          })),
+        ]),
       )
     SelectDoc(slug) =>
       (
@@ -136,12 +171,12 @@ pub fn app() -> Val[Html] {
     html <| [
       head([
         link(rel="stylesheet", href="/site.css"),
-        title("mbt-mdwiki"),
+        title(model.title),
       ]),
       body <| [
         div(class="reading-shell") <| [
           div(class="topbar", [
-            h1("mbt-mdwiki 文档站"),
+            h1(model.title + " 文档站"),
             button(
               class="button",
               on_click=emit(LoadDocs),

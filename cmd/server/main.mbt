@@ -1,11 +1,19 @@
 ///|
 async fn main {
   let storage = @lib.LocalStorage::new("content")
+  let meta = @lib.JsonMeta::open("meta")
   let api = @moonback.Module(ctx => {
     // 静态资源：rabbit page_service 会引用 /styles.css 与 /index.js
     ctx.add_middleware(@static.new(root="public"))
     ctx.get("/health", (_req, res) => {
       res.send_json({ "status": "ok" })
+    })
+    ctx.get("/api/v1/config", (_req, res) => {
+      let product_name = match meta.get_config("site.title") {
+        Some(v) if !v.is_empty() => v
+        _ => "mbt-mdwiki"
+      }
+      res.send_json({ "title": Json::string(product_name) })
     })
     ctx.get("/api/v1/docs", (_req, res) => {
       let slugs = storage.list()
