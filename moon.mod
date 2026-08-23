@@ -30,4 +30,5 @@ import {
   "moonbit-community/cmark@0.4.6",
   "moonbitlang/x@0.5.1",
   "moonbit-community/rabbita@0.15.4",
+  "hackwaly/moonback@0.8.1",
 }

@@ -11,3 +11,6 @@ target
 !.env.example
 meta/*
 !meta/.gitkeep
+
+# 前端构建产物（由 make build-frontend / warren 生成到 public/）
+public/index.js

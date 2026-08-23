@@ -1,0 +1,13 @@
+import {
+  "moonbit-community/rabbita/server" @rserver,
+  "hackwaly/moonback",
+  "hackwaly/moonback/middlewares/unstable_static" @static,
+  "moonbitlang/async",
+  "moonbitlang/core/json",
+  "conglinyizhi/mbt-mdwiki" @lib,
+  "conglinyizhi/mbt-mdwiki/app" @app,
+}
+
+supported_targets = "native+wasm"
+
+pkgtype(kind: "executable")
