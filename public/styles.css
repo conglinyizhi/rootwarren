@@ -131,6 +131,14 @@ hr { border: none; border-top: 1px solid var(--border); margin: 2rem 0; }
   align-items: start;
 }
 
+/* SPA 主工作区：左侧导航树 + 右内容（同双栏布局） */
+.workspace {
+  display: grid;
+  grid-template-columns: 210px minmax(0, 1fr);
+  gap: 28px;
+  align-items: start;
+}
+
 .sidebar {
   position: sticky;
   top: 24px;

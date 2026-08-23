@@ -35,11 +35,13 @@ using @html {
 
 ///|
 pub enum Msg {
+  Init
   LoadDocs
   SelectDoc(String)
   SetQuery(String)
   SetLoginUser(String)
   SetLoginPass(String)
+  ToggleLogin
   Login
   Logout
   Edit
@@ -81,12 +83,15 @@ pub struct Model {
   title : String
   slugs : Array[String]
   active_slug : String
+  active_title : String
   active_html : String
   query : String
   status : String
   busy : Bool
+  loaded : Bool
   // 认证与编辑
   authed : Bool
+  show_login : Bool
   editing : Bool
   content : String
   login_user : String
@@ -141,11 +146,14 @@ pub fn initial_model() -> Model {
     title: "mbt-mdwiki",
     slugs: [],
     active_slug: "",
+    active_title: "",
     active_html: "",
     query: "",
     status: "",
     busy: false,
+    loaded: false,
     authed: false,
+    show_login: false,
     editing: false,
     content: "",
     login_user: "",
@@ -311,36 +319,51 @@ fn parse_field(raw : String, field : String) -> String {
 }
 
 ///|
+fn load_docs_cmd(emit : Emit[Msg]) -> Cmd {
+  @rabbita.batch([
+    @http.get("/api/v1/docs").expect_text(
+      emit.map(result => DocsLoaded(result)),
+    ),
+    @http.get("/api/v1/config").expect_text(
+      emit.map(result => {
+        ConfigLoaded(
+          match result {
+            Ok(raw) => parse_title(raw)
+            Err(_) => "mbt-mdwiki"
+          },
+        )
+      }),
+    ),
+    @http.get("/api/auth/me").expect_text(
+      emit.map(result => {
+        MeLoaded(
+          match result {
+            Ok(_) => "authed"
+            Err(_) => "anon"
+          },
+        )
+      }),
+    ),
+  ])
+}
+
+///|
 pub fn update(model : Model, msg : Msg, emit : Emit[Msg]) -> (Model, Cmd) {
   match msg {
+    Init =>
+      (
+        { ..model, loaded: true, busy: true, status: "正在加载……" },
+        @rabbita.batch([
+          load_docs_cmd(emit),
+          @http.get("/api/v1/docs/index").expect_text(
+            emit.map(result => DocLoaded("index", result)),
+          ),
+        ]),
+      )
     LoadDocs =>
       (
         { ..model, busy: true, status: "正在加载文档……" },
-        @rabbita.batch([
-          @http.get("/api/v1/docs").expect_text(
-            emit.map(result => DocsLoaded(result)),
-          ),
-          @http.get("/api/v1/config").expect_text(
-            emit.map(result => {
-              ConfigLoaded(
-                match result {
-                  Ok(raw) => parse_title(raw)
-                  Err(_) => "mbt-mdwiki"
-                },
-              )
-            }),
-          ),
-          @http.get("/api/auth/me").expect_text(
-            emit.map(result => {
-              MeLoaded(
-                match result {
-                  Ok(_) => "authed"
-                  Err(_) => "anon"
-                },
-              )
-            }),
-          ),
-        ]),
+        load_docs_cmd(emit),
       )
     SelectDoc(slug) =>
       (
@@ -357,6 +380,7 @@ pub fn update(model : Model, msg : Msg, emit : Emit[Msg]) -> (Model, Cmd) {
     SetQuery(query) => ({ ..model, query, }, @rabbita.none)
     SetLoginUser(u) => ({ ..model, login_user: u }, @rabbita.none)
     SetLoginPass(p) => ({ ..model, login_pass: p }, @rabbita.none)
+    ToggleLogin => ({ ..model, show_login: !model.show_login }, @rabbita.none)
     Login =>
       (
         { ..model, busy: true, status: "正在登录……" },
@@ -403,7 +427,10 @@ pub fn update(model : Model, msg : Msg, emit : Emit[Msg]) -> (Model, Cmd) {
             Err(_) => []
           },
           status: match result {
-            Ok(_) => "文档已加载。选择一篇开始阅读。"
+            Ok(raw) =>
+              "已加载 " +
+              parse_slugs(raw).length().to_string() +
+              " 篇文档。"
             Err(_) => "文档加载失败。"
           },
         },
@@ -419,6 +446,10 @@ pub fn update(model : Model, msg : Msg, emit : Emit[Msg]) -> (Model, Cmd) {
             Ok(raw) => parse_html(raw)
             Err(_) => ""
           },
+          active_title: match result {
+            Ok(raw) => parse_title(raw)
+            Err(_) => slug
+          },
           active_category: match result {
             Ok(raw) => parse_field(raw, "category")
             Err(_) => ""
@@ -428,7 +459,7 @@ pub fn update(model : Model, msg : Msg, emit : Emit[Msg]) -> (Model, Cmd) {
             Err(_) => ""
           },
           status: match result {
-            Ok(_) => "已打开 " + slug + "。"
+            Ok(_) => "打开「" + slug + "」。"
             Err(_) => "打开文档失败。"
           },
         },
@@ -614,7 +645,11 @@ pub fn update(model : Model, msg : Msg, emit : Emit[Msg]) -> (Model, Cmd) {
 ///|
 /// 根组件：返回完整 HTML 结构，SSR 与浏览器水合共用。
 pub fn app() -> Val[Html] {
-  let (model, emit) = @rabbita.create_state(initial_model(), update~)
+  let (model, emit) = @rabbita.create_state(initial_model(), update~, subscriptions=(
+    model,
+    emit,
+    // 组件挂载后自动加载：首次触发 Init（打开 index + 拉列表）
+  ) => if model.loaded { @sub.batch([]) } else { @sub.every(60, emit(Init)) })
   model.view(model => {
     let doc_buttons = model.slugs.map(fn(slug) {
       button(
@@ -666,24 +701,35 @@ pub fn app() -> Val[Html] {
       ])
     } else {
       div(class="auth-bar", [
-        input(
-          placeholder="用户名",
-          value=model.login_user,
-          on_input=text => emit(SetLoginUser(text)),
-          attrs=@html.Attrs::build().data_set("name", "login-user"),
-        ),
-        input(
-          input_type=@html.Password,
-          placeholder="密码",
-          value=model.login_pass,
-          on_input=text => emit(SetLoginPass(text)),
-          attrs=@html.Attrs::build().data_set("name", "login-pass"),
-        ),
-        button(
-          on_click=emit(Login),
-          attrs=@html.Attrs::build().data_set("name", "login-button"),
-          "登录",
-        ),
+        if model.show_login {
+          div(class="login-form", [
+            input(
+              placeholder="用户名",
+              value=model.login_user,
+              on_input=text => emit(SetLoginUser(text)),
+              attrs=@html.Attrs::build().data_set("name", "login-user"),
+            ),
+            input(
+              input_type=@html.Password,
+              placeholder="密码",
+              value=model.login_pass,
+              on_input=text => emit(SetLoginPass(text)),
+              attrs=@html.Attrs::build().data_set("name", "login-pass"),
+            ),
+            button(
+              on_click=emit(Login),
+              attrs=@html.Attrs::build().data_set("name", "login-button"),
+              "登录",
+            ),
+          ])
+        } else {
+          button(
+            class="button",
+            on_click=emit(ToggleLogin),
+            attrs=@html.Attrs::build().data_set("name", "login-toggle"),
+            "登录",
+          )
+        },
       ])
     }
     let admin_panel = div(class="admin-panel", [
@@ -835,8 +881,10 @@ pub fn app() -> Val[Html] {
     }
     let active_title = if model.active_slug.is_empty() {
       "阅读文档"
-    } else {
+    } else if model.active_title.is_empty() {
       model.active_slug
+    } else {
+      model.active_title
     }
     let workspace_view = div(class="workspace", [
       div(class="sidebar", [
