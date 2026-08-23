@@ -9,7 +9,7 @@
 using @rabbita {type Val, type Html, type Cmd, type Emit}
 
 ///|
-using @html {body, button, div, h1, h2, h3, head, html, input, label, li, link, p, section, span, textarea, title, ul}
+using @html {body, button, div, h1, h2, h3, h4, head, html, input, label, li, link, option, p, section, select, span, textarea, title, ul}
 
 
 ///|
@@ -41,6 +41,14 @@ pub enum Msg {
   SetSiteTitle(String)
   SaveSite
   SiteSaved(Result[String, Error])
+  // API key 管理
+  AdminKeysLoaded(Result[String, Error])
+  SetKeyName(String)
+  SetKeyScopes(String)
+  SetKeyReadPrefix(String)
+  SetKeyWritePrefix(String)
+  CreateKey
+  KeyCreated(Result[String, Error])
 }
 
 ///|
@@ -63,6 +71,11 @@ pub struct Model {
   admin_view : Bool
   users : Array[String]
   site_title_input : String
+  keys : Array[String]
+  key_name : String
+  key_scopes : String
+  key_read_prefix : String
+  key_write_prefix : String
 } derive(Eq)
 
 ///|
@@ -84,6 +97,15 @@ pub struct SitePayload {
 } derive(ToJson)
 
 ///|
+/// API key 创建请求体。
+pub struct KeyPayload {
+  name : String
+  scopes : String
+  read_prefix : String
+  write_prefix : String
+} derive(ToJson)
+
+///|
 pub fn initial_model() -> Model {
   {
     title: "mbt-mdwiki",
@@ -102,6 +124,11 @@ pub fn initial_model() -> Model {
     admin_view: false,
     users: [],
     site_title_input: "",
+    keys: [],
+    key_name: "",
+    key_scopes: "read",
+    key_read_prefix: "",
+    key_write_prefix: "",
   }
 }
 
@@ -175,6 +202,39 @@ fn parse_site_title(raw : String) -> String {
       _ => "mbt-mdwiki"
     }
     _ => "mbt-mdwiki"
+  }
+}
+
+///|
+fn parse_keys(raw : String) -> Array[String] {
+  let json = @json.parse(raw) catch { _ => return [] }
+  let result : Array[String] = []
+  if json is Json::Object(map) {
+    if map.get("keys") is Some(Json::Array(items)) {
+      for item in items {
+        if item is Json::Object(k) {
+          result.push(
+            match k.get("name") {
+              Some(Json::String(name)) => name
+              _ => ""
+            },
+          )
+        }
+      }
+    }
+  }
+  result
+}
+
+///|
+fn extract_key(raw : String) -> String {
+  let json = @json.parse(raw) catch { _ => return "" }
+  match json {
+    Json::Object(map) => match map.get("key") {
+      Some(Json::String(k)) => k
+      _ => ""
+    }
+    _ => ""
   }
 }
 
@@ -312,6 +372,7 @@ pub fn update(model : Model, msg : Msg, emit : Emit[Msg]) -> (Model, Cmd) {
         @rabbita.batch([
           @http.get("/api/admin/users").expect_text(emit.map(result => AdminUsersLoaded(result))),
           @http.get("/api/admin/site").expect_text(emit.map(result => AdminSiteLoaded(result))),
+          @http.get("/api/admin/keys").expect_text(emit.map(result => AdminKeysLoaded(result))),
         ]),
       )
     HideAdmin => ({ ..model, admin_view: false }, @rabbita.none)
@@ -367,6 +428,45 @@ pub fn update(model : Model, msg : Msg, emit : Emit[Msg]) -> (Model, Cmd) {
         },
         @rabbita.none,
       )
+    AdminKeysLoaded(result) =>
+      (
+        {
+          ..model,
+          busy: false,
+          keys: match result {
+            Ok(raw) => parse_keys(raw)
+            Err(_) => []
+          },
+        },
+        @rabbita.none,
+      )
+    SetKeyName(n) => ({ ..model, key_name: n }, @rabbita.none)
+    SetKeyScopes(s) => ({ ..model, key_scopes: s }, @rabbita.none)
+    SetKeyReadPrefix(p) => ({ ..model, key_read_prefix: p }, @rabbita.none)
+    SetKeyWritePrefix(p) => ({ ..model, key_write_prefix: p }, @rabbita.none)
+    CreateKey =>
+      (
+        { ..model, busy: true, status: "正在创建 API key……" },
+        @http.post("/api/admin/keys").with_json(KeyPayload::{
+          name: model.key_name,
+          scopes: model.key_scopes,
+          read_prefix: model.key_read_prefix,
+          write_prefix: model.key_write_prefix,
+        }).expect_text(emit.map(result => KeyCreated(result))),
+      )
+    KeyCreated(result) =>
+      (
+        {
+          ..model,
+          busy: false,
+          key_name: "",
+          status: match result {
+            Ok(raw) => "API key 已创建：" + extract_key(raw)
+            Err(_) => "创建失败。"
+          },
+        },
+        @rabbita.none,
+      )
   }
 }
 
@@ -414,6 +514,31 @@ pub fn app() -> Val[Html] {
           input(id="site-title", value=model.site_title_input, on_input=text => emit(SetSiteTitle(text)), attrs=@html.Attrs::build().data_set("name", "site-title-input")),
           button(on_click=emit(SaveSite), attrs=@html.Attrs::build().data_set("name", "save-site-button"), "保存站点设置"),
         ]),
+      ]),
+      section(class="admin-section", [
+        h3("API 密钥"),
+        ul(model.keys.map(fn(k) { li(k) })),
+        h4("创建密钥"),
+        label(for_="key-name", "名称"),
+        div(class="field", [
+          input(id="key-name", value=model.key_name, on_input=text => emit(SetKeyName(text)), attrs=@html.Attrs::build().data_set("name", "key-name-input")),
+        ]),
+        label(for_="key-scopes", "权限"),
+        div(class="field", [
+          select(id="key-scopes", on_change=v => emit(SetKeyScopes(v)), attrs=@html.Attrs::build().data_set("name", "key-scopes-select"), [
+            option(value="read", selected=model.key_scopes == "read", "只读"),
+            option(value="read,write", selected=model.key_scopes == "read,write", "读写"),
+          ]),
+        ]),
+        label(for_="key-read-prefix", "可读前缀"),
+        div(class="field", [
+          input(id="key-read-prefix", value=model.key_read_prefix, on_input=text => emit(SetKeyReadPrefix(text)), attrs=@html.Attrs::build().data_set("name", "key-read-prefix-input")),
+        ]),
+        label(for_="key-write-prefix", "可写前缀"),
+        div(class="field", [
+          input(id="key-write-prefix", value=model.key_write_prefix, on_input=text => emit(SetKeyWritePrefix(text)), attrs=@html.Attrs::build().data_set("name", "key-write-prefix-input")),
+        ]),
+        button(on_click=emit(CreateKey), attrs=@html.Attrs::build().data_set("name", "create-key-button"), "创建密钥"),
       ]),
     ])
     let editor = if model.editing {

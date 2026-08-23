@@ -122,6 +122,104 @@ pub fn valid_user_role(value : String) -> Bool {
 }
 
 ///|
+/// 文档 API 的权限与范围。
+pub struct DocsPerm {
+  scopes : String
+  read_prefix : String
+  write_prefix : String
+}
+
+///|
+/// 计算请求的文档权限（scope + 读/写前缀），复用根库 verify_api_key/find_user_by_id。
+/// 优先 Bearer API key（含绑定用户交集），否则 cookie session。
+pub async fn AuthState::docs_auth(
+  self : AuthState,
+  meta : @lib.JsonMeta,
+  req : @moonback.Request,
+) -> DocsPerm {
+  // 1. Bearer API key
+  if request_token(req) is Some(key) {
+    if key.has_prefix("mk_") {
+      match meta.verify_api_key(key) {
+        Some(record) => {
+          let mut scopes = record.scopes
+          let read_prefix = record.read_prefix
+          let mut write_prefix = record.write_prefix
+          if record.user_id > 0 {
+            match meta.find_user_by_id(record.user_id) {
+              Some(user) => {
+                if user.role == "none" {
+                  scopes = ""
+                } else if user.role == "read" {
+                  scopes = "read"
+                } else if user.role == "write" && !can_write(scopes) {
+                  scopes = "read"
+                }
+                if !user.write_prefix.is_empty() {
+                  write_prefix = intersect_prefix(write_prefix, user.write_prefix)
+                }
+              }
+              None => scopes = ""
+            }
+          }
+          return { scopes, read_prefix, write_prefix }
+        }
+        None => return { scopes: "", read_prefix: "", write_prefix: "" }
+      }
+    }
+  }
+  // 2. cookie session（JWT）
+  match self.authenticate(req) {
+    Some(subject) if subject == "admin" =>
+      return { scopes: "read,write", read_prefix: "", write_prefix: "" }
+    Some(subject) =>
+      match self.subjects.get(subject) {
+        Some(user) => {
+          let scopes = if user.role == "write" || user.role == "admin" || user.role == "superadmin" {
+            "read,write"
+          } else {
+            user.role
+          }
+          return { scopes, read_prefix: "", write_prefix: user.write_prefix }
+        }
+        None => ()
+      }
+    None => ()
+  }
+  { scopes: "", read_prefix: "", write_prefix: "" }
+}
+
+///|
+pub fn can_write(scopes : String) -> Bool {
+  scopes.split(",").any(fn(s) { s == "write" })
+}
+
+///|
+pub fn can_read(scopes : String) -> Bool {
+  scopes.split(",").any(fn(s) { s == "read" || s == "write" })
+}
+
+///|
+pub fn allowed_read_prefix(prefix : String, slug : String) -> Bool {
+  prefix.is_empty() || slug == prefix || slug.has_prefix(prefix + "/")
+}
+
+///|
+pub fn allowed_write_prefix(prefix : String, slug : String) -> Bool {
+  prefix.is_empty() || slug == prefix || slug.has_prefix(prefix + "/")
+}
+
+///|
+/// 求两个前缀的交集（取更具体的一个；无交集返回空）。
+fn intersect_prefix(a : String, b : String) -> String {
+  if a.is_empty() { b }
+  else if b.is_empty() { a }
+  else if a == b || a.has_prefix(b + "/") { a }
+  else if b.has_prefix(a + "/") { b }
+  else { "" }
+}
+
+///|
 /// 管理员登录：验证 provider，成功则签发 token。返回 token?
 pub fn AuthState::admin_login(
   self : AuthState,

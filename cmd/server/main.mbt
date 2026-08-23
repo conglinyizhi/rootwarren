@@ -291,18 +291,32 @@ async fn main {
       res.send_html(@moonback.Html::raw(page))
     })
 
-    ctx.get("/api/v1/docs", (_req, res) => {
-      let slugs = storage.list()
+    ctx.get("/api/v1/docs", (req, res) => {
+      let perm = auth.docs_auth(meta, req)
+      if !can_read(perm.scopes) {
+        res.send_json({ "error": Json::string("read permission required") }, status=403)
+        return
+      }
+      let slugs = storage.list().filter(fn(slug) { allowed_read_prefix(perm.read_prefix, slug) })
       let items = slugs.map(fn(slug) { Json::string(slug) })
       res.send_json({ "docs": Json::array(items) })
     })
     ctx.get("/api/v1/docs/*slug", (req, res) => {
+      let perm = auth.docs_auth(meta, req)
       let slug = match req.params.get("slug") {
         Some(s) => s.to_owned()
         None => {
           res.send_text("missing slug", status=400)
           return
         }
+      }
+      if !can_read(perm.scopes) {
+        res.send_json({ "error": Json::string("read permission required") }, status=403)
+        return
+      }
+      if !allowed_read_prefix(perm.read_prefix, slug) {
+        res.send_json({ "error": Json::string("document outside readable range") }, status=403)
+        return
       }
       match storage.read(slug) {
         Some(raw) => {
@@ -315,6 +329,7 @@ async fn main {
       }
     })
     ctx.add_route(@http.RequestMethod::Put, "/api/v1/docs/*slug", (req, res) => {
+      let perm = auth.docs_auth(meta, req)
       let slug = match req.params.get("slug") {
         Some(s) => s.to_owned()
         None => {
@@ -326,7 +341,7 @@ async fn main {
         res.send_text("invalid slug", status=400)
         return
       }
-      if !auth.can_edit(req) {
+      if !can_write(perm.scopes) || !allowed_write_prefix(perm.write_prefix, slug) {
         res.send_json({ "error": Json::string("write permission required") }, status=403)
         return
       }
@@ -344,6 +359,7 @@ async fn main {
       }
     })
     ctx.add_route(@http.RequestMethod::Delete, "/api/v1/docs/*slug", (req, res) => {
+      let perm = auth.docs_auth(meta, req)
       let slug = match req.params.get("slug") {
         Some(s) => s.to_owned()
         None => {
@@ -355,7 +371,7 @@ async fn main {
         res.send_text("invalid slug", status=400)
         return
       }
-      if !auth.can_edit(req) {
+      if !can_write(perm.scopes) || !allowed_write_prefix(perm.write_prefix, slug) {
         res.send_json({ "error": Json::string("write permission required") }, status=403)
         return
       }
