@@ -97,6 +97,31 @@ pub fn AuthState::is_admin(self : AuthState, req : @moonback.Request) -> Bool {
 }
 
 ///|
+/// 当前请求用户的角色（内置 admin 视为 superadmin；未登录为 none）。
+pub fn AuthState::session_role(self : AuthState, req : @moonback.Request) -> String {
+  match self.authenticate(req) {
+    Some(subject) if subject == "admin" => "superadmin"
+    Some(subject) =>
+      match self.subjects.get(subject) {
+        Some(user) => user.role
+        None => "none"
+      }
+    None => "none"
+  }
+}
+
+///|
+/// actor 能否管理 target 角色：superadmin 可管所有，admin 不能管 superadmin。
+pub fn can_manage_role(actor : String, target : String) -> Bool {
+  actor == "superadmin" || (actor == "admin" && target != "superadmin")
+}
+
+///|
+pub fn valid_user_role(value : String) -> Bool {
+  value == "superadmin" || value == "admin" || value == "none" || value == "read" || value == "write"
+}
+
+///|
 /// 管理员登录：验证 provider，成功则签发 token。返回 token?
 pub fn AuthState::admin_login(
   self : AuthState,
