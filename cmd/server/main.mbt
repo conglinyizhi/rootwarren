@@ -136,6 +136,19 @@ async fn main {
       }
       res.send_json({ "title": Json::string(product_name) })
     })
+    // 服务端渲染阅读页（面包屑 + 文档树 + tags + title）
+    ctx.get("/d/*slug", (req, res) => {
+      let slug = match req.params.get("slug") {
+        Some(s) => s.to_owned()
+        None => {
+          res.send_text("missing slug", status=400)
+          return
+        }
+      }
+      let page = render_doc_page(storage, meta, auth, req, slug)
+      res.send_html(@moonback.Html::raw(page))
+    })
+
     ctx.get("/api/v1/docs", (_req, res) => {
       let slugs = storage.list()
       let items = slugs.map(fn(slug) { Json::string(slug) })
@@ -302,5 +315,91 @@ fn parse_port(env : Map[String, String]) -> UInt16 {
   match env.get("PORT") {
     Some(v) => @string.parse_uint(v).to_uint16() catch { _ => 8080 }
     None => 8080
+  }
+}
+
+///|
+async fn site_product_name(meta : @lib.JsonMeta) -> String {
+  match meta.get_config("site.title") {
+    Some(v) if !v.is_empty() => v
+    _ => "mbt-mdwiki"
+  }
+}
+
+///|
+async fn site_show_tree(meta : @lib.JsonMeta) -> Bool {
+  match meta.get_config("site.show_tree") {
+    Some(v) if v == "false" => false
+    _ => true
+  }
+}
+
+///|
+/// 服务端渲染一篇文章为完整 HTML 页面（复用根库渲染工具）。
+async fn render_doc_page(
+  storage : @lib.LocalStorage,
+  meta : @lib.JsonMeta,
+  auth : AuthState,
+  req : @moonback.Request,
+  slug : String,
+) -> String {
+  match storage.read(slug) {
+    Some(raw) => {
+      let doc = @lib.document_meta(raw)
+      let html = @lib.render_doc_html(raw)
+      let product_name = site_product_name(meta)
+      let tags = if doc.tags.is_empty() {
+        ""
+      } else {
+        let chips = doc.tags.replace_all(old=", ", new=",").split(",").map(fn(tag) {
+          "<span class=\"tag\">" + tag.trim().to_owned() + "</span>"
+        }).join("")
+        "<div class=\"tags\"><small>标签</small>" + chips + "</div>"
+      }
+      let tree = if site_show_tree(meta) {
+        let items = storage.list().map(fn(item) {
+          "<li><a href=\"/d/" + item + "\">" + item + "</a></li>"
+        }).join("")
+        "<nav class=\"doc-tree\"><strong>文档目录</strong><ul>" + items + "</ul></nav>"
+      } else {
+        ""
+      }
+      let breadcrumb = build_breadcrumb(product_name, slug, doc.title)
+      let edit_link = if auth.can_edit(req) {
+        "<a href=\"/edit\">进入编辑器</a>"
+      } else {
+        ""
+      }
+      "<!doctype html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>" +
+      doc.title + " - " + product_name +
+      "</title><link rel=\"stylesheet\" href=\"/site.css\"></head><body><main class=\"reading-shell\"><div class=\"topbar\"><a href=\"/\">" + product_name +
+      "</a><span class=\"account\">" + edit_link + "</span></div><div class=\"breadcrumbs\">" + breadcrumb +
+      "</div>" + tree + "<article>" + html + tags + "</article></main></body></html>"
+    }
+    None =>
+      "<!doctype html><html><head><meta charset=\"utf-8\"><title>文档不存在</title></head><body><p>文档不存在</p></body></html>"
+  }
+}
+
+///|
+fn build_breadcrumb(product_name : String, slug : String, title : String) -> String {
+  if slug == "index" {
+    "<a href=\"/\">" + product_name + "</a><span>/</span><strong>首页</strong>"
+  } else {
+    let parts = slug.split("/").to_array()
+    let mut links = "<a href=\"/\">" + product_name + "</a><span>/</span>"
+    for i in 0..<parts.length() {
+      let part = parts[i].to_owned()
+      let href = "/d/" + parts[:i + 1].join("/")
+      links = links + (if i == parts.length() - 1 {
+        "<strong>" + title + "</strong>"
+      } else {
+        "<a href=\"" + href + "\">" + part + "</a>"
+      })
+      if i < parts.length() - 1 {
+        links = links + "<span>/</span>"
+      }
+    }
+    links
   }
 }
