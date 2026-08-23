@@ -1,6 +1,6 @@
 // 共享的 Markdown 文档渲染工具。
-// 纯函数，不依赖 HTTP/存储层；供后端 cmd/server 与旧 cmd/main 复用，
-// 保证迁移过程中不重写渲染安全边界。
+// 纯函数，不依赖 HTTP/存储层；供后端 cmd/server 复用，
+// 保障渲染安全边界不被重写。
 
 ///|
 pub struct DocumentMeta {
