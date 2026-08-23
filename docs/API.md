@@ -8,21 +8,24 @@ The listener can be configured with `--ip` and `--port`, or with `MBT_MDWIKI_IP`
 
 ## Authentication
 
-Protected requests require an API key:
+Two credential forms are supported.
+
+**1. API key (Bearer):**
 
 ```sh
 curl -H "Authorization: Bearer $MBT_MDWIKI_KEY" \
-  http://127.0.0.1:8001/api/v1/docs
+  http://127.0.0.1:8080/api/v1/docs
 ```
 
-Keys have comma-separated scopes:
+Keys have comma-separated scopes `read` or `read,write`. A key may optionally be bound to a user and a readable/writable slug prefix (e.g. `guide`), in which case the effective permission is the intersection of key scope, bound-user role, and configured prefixes. Documents outside the readable prefix return `403`; list results are filtered to the prefix.
 
-- `read`: list, read, search, and read config.
-- `read,write`: all `read` operations plus document creation, overwrite, and deletion.
+**2. Cookie session (browser):**
 
-Missing or invalid credentials return `401`. A valid key without the needed scope returns `403`.
+Logging in via `POST /api/auth/login` sets an HttpOnly `mbt_auth` cookie. Browser `fetch` sends it automatically, so the frontend writes to protected endpoints without attaching a header.
 
-Create and revoke keys from `/admin/login`. The server can use `ADMIN_TOKEN` for fixed-token form login, but it is optional. When unset, use the one-time random admin URL printed at startup. A newly created API key is shown once; record it in the calling client's secret store, never in a document or repository.
+Missing or invalid credentials return `401`. A valid credential without the needed scope returns `403`.
+
+Create and revoke keys from the admin UI (frontend), or via the `/api/admin/*` endpoints. A newly created API key plaintext is shown once; only its SHA-256 hash is stored.
 
 ## Document Slugs
 
@@ -58,18 +61,17 @@ Requires `read`.
 {"docs":["index","guide/getting-started"]}
 ```
 
-### Read raw Markdown
+### Read a document
 
 ```http
 GET /api/v1/docs/{slug}
 Authorization: Bearer <key>
 ```
 
-Requires `read`. Returns `text/markdown`.
+Requires `read` and the slug must be within the credential's readable prefix. Returns rendered Markdown HTML:
 
-```sh
-curl -H "Authorization: Bearer $MBT_MDWIKI_KEY" \
-  http://127.0.0.1:8001/api/v1/docs/index
+```json
+{"slug":"guide/getting-started","html":"<h1>...</h1>"}
 ```
 
 ### Create or overwrite a document
@@ -143,8 +145,34 @@ Authorization: Bearer <key>
 Requires `read`.
 
 ```json
-{"site":{"title":"mbt-mdwiki","description":""}}
+{"title":"mbt-mdwiki"}
 ```
+
+## Auth Endpoints
+
+```http
+POST /api/auth/login        {username, password} -> {token, role} (sets mbt_auth cookie)
+POST /api/auth/logout        revokes the session cookie
+GET  /api/auth/me            -> {subject} if authenticated, else 401
+```
+
+## Admin Endpoints
+
+All require an admin/superadmin session cookie.
+
+```http
+GET  /api/admin/users              list users
+POST /api/admin/users              create user {username,password,role,write_prefix}
+POST /api/admin/users/update       update user {id,role,write_prefix,enabled}
+POST /api/admin/users/password     reset password {id,password}
+GET  /api/admin/keys                list API keys
+POST /api/admin/keys                create key {name,scopes,user_id,read_prefix,write_prefix}
+POST /api/admin/keys/revoke         revoke key {id}
+GET  /api/admin/site                read site config
+POST /api/admin/site                save site config {title,public,show_tree,llms_mode,llms_prefixes}
+```
+
+Roles: `superadmin` can manage any account; `admin` cannot create/edit/reset a `superadmin`. `site.public=false` blocks anonymous reads of `/d/` and `/`.
 
 ## llms.txt
 

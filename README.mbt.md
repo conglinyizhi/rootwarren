@@ -41,21 +41,38 @@ make init-env        # 生成 .env 模板（不覆盖已有）
 moon fmt             # 格式化
 ```
 
+## 能力
+
+- **阅读**：`/d/{slug}` 服务端渲染阅读页（面包屑 + 文档树 + tags + 产品名 title）；`/` 是 full-rabbita SPA（SSR + 水合）。
+- **认证**：API key（Bearer，可绑定用户 + 读/写 slug 前缀范围）或 cookie session（浏览器自动携带）。
+- **权限分层**：`superadmin` > `admin` > `write` > `read` > `none`；admin 不能管理 superadmin。
+- **站点设置**：产品名、公开/私有（`site.public`）、文档树、`llms.txt` 三档策略（public/partial/disabled + 前缀过滤）。
+- **后台管理**：用户 CRUD + 密码重置 + 启停；API key 创建/吊销 + 范围绑定；站点设置。
+- **安全**：slug 路径穿越防护（`..`/`.`/绝对路径拒绝）、API key 范围过滤、越权禁止。
+
 ## API
 
 见 [`docs/API.md`](docs/API.md)（REST 契约）。服务端点包括：
 
 ```text
 GET    /health
+GET    /d/*slug                服务端渲染阅读页
+GET    /llms.txt
 GET    /api/v1/config
 GET    /api/v1/docs
 GET    /api/v1/docs/*slug
-PUT    /api/v1/docs/*slug     （需登录且有写权限）
-DELETE /api/v1/docs/*slug     （需登录且有写权限）
-POST   /api/auth/login
+PUT    /api/v1/docs/*slug     （需写权限 + 前缀范围）
+DELETE /api/v1/docs/*slug     （需写权限 + 前缀范围）
+POST   /api/auth/login         返回 {token,role} + 设 mbt_auth cookie
 POST   /api/auth/logout
 GET    /api/auth/me
-GET    /api/admin/users       （仅管理员）
-GET    /api/admin/site        （仅管理员）
-POST   /api/admin/site        （仅管理员）
+GET    /api/admin/users        （仅管理员）
+POST   /api/admin/users        （仅管理员）
+POST   /api/admin/users/update
+POST   /api/admin/users/password
+GET    /api/admin/keys         （仅管理员）
+POST   /api/admin/keys
+POST   /api/admin/keys/revoke
+GET    /api/admin/site         （仅管理员）
+POST   /api/admin/site
 ```
