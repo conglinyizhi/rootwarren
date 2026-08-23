@@ -54,8 +54,16 @@ async fn main {
     Some([value, ..]) => value
     _ => "8001"
   }
-  let server = @http.Server(@socket.Addr::parse(ip + ":" + port))
-  println("mbt-mdwiki listening on http://127.0.0.1:\{port}")
+  let server = @http.Server(@socket.Addr::parse(ip + ":" + port)) catch {
+    err => {
+      println(
+        "启动失败：无法监听 \{ip}:\{port}，该地址或端口可能已被占用。",
+      )
+      println("详细错误：\{err}")
+      return
+    }
+  }
+  println("mbt-mdwiki listening on http://\{ip}:\{port}")
   println("客户端 Key（本次启动仅显示一次）：\{startup_key}")
   println(
     "客户端地址（打开后会自动隐藏 Key）：http://127.0.0.1:\{port}/?api_key=\{startup_key}",
@@ -572,19 +580,19 @@ async fn admin_keys_page_with_notice(
     rows.write_string(key.id.to_string())
     rows.write_string("\"><button>Revoke</button></form></li>")
   }
-  let page = "<!doctype html><html lang=\"zh-CN\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>后台管理 - mbt-mdwiki</title><style>body{font-family:sans-serif;max-width:860px;margin:40px auto;padding:0 20px;color:#24352a}button{padding:6px 10px}section{border:1px solid #ccd8cc;padding:16px;margin:16px 0}li{margin:8px 0}</style></head><body><h1>mbt-mdwiki 后台管理</h1><p>" +
+  let page = "<!doctype html><html lang=\"zh-CN\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>后台管理 - mbt-mdwiki</title><style>body{font-family:Inter,\"Noto Sans SC\",sans-serif;max-width:900px;margin:0 auto;padding:32px 20px;background:#111518;color:#d8dfda}h1{font-weight:500}section{border:1px solid #39463d;border-radius:6px;padding:22px;margin:18px 0;background:#171c1a}fieldset{border:1px solid #3d4d41;border-radius:4px;padding:14px;margin:14px 0}legend{color:#b9caa9;padding:0 6px}label{display:block;margin:10px 0;color:#c5cec7}button{padding:8px 12px;border:1px solid #718a61;border-radius:4px;background:#263322;color:#e4eedf}input,select{padding:8px;background:#111817;color:#e1e9e2;border:1px solid #48574d;border-radius:3px}li{margin:10px 0}</style></head><body><h1>mbt-mdwiki 后台管理</h1><p>" +
     notice +
     "</p><section><h2>网站访问</h2><p>当前状态：" +
     (if public { "公开浏览" } else { "仅登录可见" }) +
-    "</p><form method=\"post\" action=\"/admin/site\"><label><input type=\"radio\" name=\"public\" value=\"true\"" +
+    "</p><form method=\"post\" action=\"/admin/site\"><fieldset><legend>匿名阅读权限</legend><label><input type=\"radio\" name=\"public\" value=\"true\"" +
     (if public { " checked" } else { "" }) +
-    "> 允许未登录用户阅读文档</label><br><label><input type=\"radio\" name=\"public\" value=\"false\"" +
+    "> 允许未登录用户阅读文档</label><label><input type=\"radio\" name=\"public\" value=\"false\"" +
     (if !public { " checked" } else { "" }) +
-    "> 仅登录后允许阅读</label><br><label><input type=\"radio\" name=\"show_tree\" value=\"true\"" +
+    "> 仅登录后允许阅读</label></fieldset><fieldset><legend>阅读页导航</legend><label><input type=\"radio\" name=\"show_tree\" value=\"true\"" +
     (if show_tree { " checked" } else { "" }) +
-    "> 在阅读页显示文档层级</label><br><label><input type=\"radio\" name=\"show_tree\" value=\"false\"" +
+    "> 在阅读页显示文档层级</label><label><input type=\"radio\" name=\"show_tree\" value=\"false\"" +
     (if !show_tree { " checked" } else { "" }) +
-    "> 隐藏文档层级</label><br><button>保存网站访问设置</button></form></section><section><h2>访问密钥</h2><ul>" +
+    "> 隐藏文档层级</label></fieldset><button>保存网站访问设置</button></form></section><section><h2>访问密钥</h2><ul>" +
     rows.to_string() +
     "</ul><h3>创建新密钥</h3><form method=\"post\" action=\"/admin/keys\"><input name=\"name\" placeholder=\"密钥名称\"><select name=\"scopes\"><option value=\"read\">只读</option><option value=\"read,write\">读写</option></select><button>创建密钥</button></form></section></body></html>"
   respond(conn, 200, "text/html; charset=utf-8", page)
@@ -732,12 +740,14 @@ async fn render_doc_page_by_slug(
       }
       let page = "<!doctype html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>" +
         page_title +
-        "</title></head><body><main style=\"max-width:860px;margin:40px auto;padding:0 20px\"><p><a href=\"/\">返回首页</a></p>" +
+        "</title><style>:root{font-family:Inter,\"Noto Sans SC\",sans-serif;color:#d8dfda;background:#111518}body{margin:0}main{max-width:1080px;margin:0 auto;padding:28px 30px 70px}.topbar{display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #344139;padding-bottom:14px;margin-bottom:24px}nav{float:right;width:230px;margin:0 0 20px 28px;padding:16px;background:#192319;border:1px solid #334238;border-radius:5px}nav ul{padding-left:20px}nav li{margin:8px 0}article{max-width:760px;line-height:1.8}article h1,article h2,article h3{color:#eef4ee;line-height:1.3}article code{background:#202a23;padding:2px 5px;border-radius:3px}article pre{background:#0b0e0d;padding:14px;overflow:auto;border:1px solid #2e3d33}a{color:#8ebbe1}small{color:#9aa89d}@media(max-width:760px){main{padding:20px 16px}nav{float:none;width:auto;margin:0 0 24px}}</style></head><body><main><div class=\"topbar\"><a href=\"/\">mbt-mdwiki 文档站</a>" +
         edit_link +
+        "</div>" +
         tree +
+        "<article>" +
         html +
         tags +
-        "</main></body></html>"
+        "</article></main></body></html>"
       respond(conn, 200, "text/html; charset=utf-8", page)
     }
     None => respond_error(conn, 404, "document not found")
