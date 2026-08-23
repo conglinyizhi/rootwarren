@@ -14,3 +14,6 @@ meta/*
 
 # 前端构建产物（由 make build-frontend / warren 生成到 public/）
 public/index.js
+
+# 本地浏览器调试 profile
+.thorium-profile/

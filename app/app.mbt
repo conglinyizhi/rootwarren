@@ -311,25 +311,6 @@ fn parse_field(raw : String, field : String) -> String {
 }
 
 ///|
-fn inline_script(js : String) -> Html {
-  @html.node("script", @html.Attrs::build().inner_html(js), @html.nothing)
-}
-
-// 防闪烁：CSS 解析前按浏览器存储设定 data-theme
-
-///|
-fn theme_init_js() -> String {
-  "<script>(function(){try{var t=localStorage.getItem('mbt-theme');if(t==='light'||t==='dark'){document.documentElement.dataset.theme=t}}catch(e){}})()</script>"
-}
-
-// 持久化：监听 html[data-theme] 变化写回浏览器存储
-
-///|
-fn theme_persist_js() -> String {
-  "<script>(function(){var e=document.documentElement;var w=function(){try{var t=e.dataset.theme;if(t==='light'||t==='dark'){localStorage.setItem('mbt-theme',t)}else{localStorage.removeItem('mbt-theme')}}catch(x){}};try{new MutationObserver(w).observe(e,{attributes:true,attributeFilter:['data-theme']})}catch(x){};w()})()</script>"
-}
-
-///|
 pub fn update(model : Model, msg : Msg, emit : Emit[Msg]) -> (Model, Cmd) {
   match msg {
     LoadDocs =>
@@ -647,19 +628,25 @@ pub fn app() -> Val[Html] {
       button(
         class=if model.theme == "system" { "active" } else { "" },
         on_click=emit(SetTheme("system")),
-        attrs=@html.Attrs::build().data_set("name", "theme-system"),
+        attrs=@html.Attrs::build()
+          .data_set("theme-apply", "system")
+          .data_set("name", "theme-system"),
         "系统",
       ),
       button(
         class=if model.theme == "light" { "active" } else { "" },
         on_click=emit(SetTheme("light")),
-        attrs=@html.Attrs::build().data_set("name", "theme-light"),
+        attrs=@html.Attrs::build()
+          .data_set("theme-apply", "light")
+          .data_set("name", "theme-light"),
         "浅色",
       ),
       button(
         class=if model.theme == "dark" { "active" } else { "" },
         on_click=emit(SetTheme("dark")),
-        attrs=@html.Attrs::build().data_set("name", "theme-dark"),
+        attrs=@html.Attrs::build()
+          .data_set("theme-apply", "dark")
+          .data_set("name", "theme-dark"),
         "深色",
       ),
     ])
@@ -867,9 +854,13 @@ pub fn app() -> Val[Html] {
     } else {
       workspace_view
     }
-    html(attrs=@html.Attrs::build().data_set("theme", model.theme), [
+    html([
       head([
-        inline_script(theme_init_js()),
+        @html.node(
+          "script",
+          @html.Attrs::build().src("/theme.js"),
+          @html.nothing,
+        ),
         link(rel="stylesheet", href="/site.css"),
         title(model.title),
       ]),
@@ -900,7 +891,6 @@ pub fn app() -> Val[Html] {
           p(model.status),
           content_area,
         ],
-        inline_script(theme_persist_js()),
       ],
     ])
   })

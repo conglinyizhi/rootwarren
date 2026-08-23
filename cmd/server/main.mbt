@@ -715,8 +715,7 @@ async fn render_doc_page(
       doc.title +
       " - " +
       product_name +
-      "</title><script>(function(){try{var t=localStorage.getItem('mbt-theme');if(t==='light'||t==='dark'){document.documentElement.dataset.theme=t}}catch(e){}})()</script>" +
-      "<link rel=\"stylesheet\" href=\"/site.css\"></head><body><main class=\"reading-shell\"><div class=\"topbar\"><a href=\"/\">" +
+      "</title><script src=\"/theme.js\"></script><link rel=\"stylesheet\" href=\"/site.css\"></head><body><main class=\"reading-shell\"><div class=\"topbar\"><a href=\"/\">" +
       product_name +
       "</a><span class=\"account\">" +
       edit_link +
@@ -941,8 +940,7 @@ async fn render_category_page(
   slug +
   " - " +
   product_name +
-  "</title><script>(function(){try{var t=localStorage.getItem('mbt-theme');if(t==='light'||t==='dark'){document.documentElement.dataset.theme=t}}catch(e){}})()</script>" +
-  "<link rel=\"stylesheet\" href=\"/site.css\"></head><body><main class=\"reading-shell\"><div class=\"topbar\"><a href=\"/\">" +
+  "</title><script src=\"/theme.js\"></script><link rel=\"stylesheet\" href=\"/site.css\"></head><body><main class=\"reading-shell\"><div class=\"topbar\"><a href=\"/\">" +
   product_name +
   "</a></div><h1>分类：" +
   slug +
