@@ -407,7 +407,9 @@ async fn handle_api(
           match login_state.active_tokens.get(token) {
             Some(subject) if subject == "admin" => scopes = "read,write"
             Some(subject) if login_state.subjects.get(subject) is Some(user) => {
-              scopes = if user.role == "write" || user.role == "admin" {
+              scopes = if user.role == "write" ||
+                user.role == "admin" ||
+                user.role == "superadmin" {
                 "read,write"
               } else {
                 user.role
@@ -684,7 +686,9 @@ async fn handle_admin(
     let password = form_value(form, "password")
     let role = form_value(form, "role")
     let prefix = form_value(form, "write_prefix")
-    if !valid_username(username) ||
+    let actor = session_role(request, login_state)
+    if !can_manage_role(actor, role) ||
+      !valid_username(username) ||
       password.length() < 12 ||
       !valid_user_role(role) ||
       (!prefix.is_empty() && !@lib.valid_slug(prefix)) {
@@ -702,15 +706,16 @@ async fn handle_admin(
     let form = @utf8.decode_lossy(body.read_all().binary()[:])
     let id = parse_nonnegative_int(form_value(form, "id"))
     let password = form_value(form, "password")
-    let mut target_is_admin = false
+    let actor = session_role(request, login_state)
+    let mut target_role = "none"
     for user in meta.list_users() {
-      if user.id == id && user.role == "admin" {
-        target_is_admin = true
+      if user.id == id {
+        target_role = user.role
       }
     }
-    if password.length() < 12 || target_is_admin {
+    if password.length() < 12 || !can_manage_role(actor, target_role) {
       admin_users_page(
-        conn, meta, "密码至少 12 个字符，且不可由此重置管理员账号密码",
+        conn, meta, "密码至少 12 个字符，且当前权限不能重置该账号密码",
       )
     } else if meta.reset_user_password(id, password) {
       for token, subject in login_state.active_tokens {
@@ -732,7 +737,16 @@ async fn handle_admin(
     let role = form_value(form, "role")
     let prefix = form_value(form, "write_prefix")
     let enabled = form_value(form, "enabled") == "true"
-    if !valid_user_role(role) ||
+    let actor = session_role(request, login_state)
+    let mut target_role = "none"
+    for user in meta.list_users() {
+      if user.id == id {
+        target_role = user.role
+      }
+    }
+    if !can_manage_role(actor, target_role) ||
+      !can_manage_role(actor, role) ||
+      !valid_user_role(role) ||
       (!prefix.is_empty() && !@lib.valid_slug(prefix)) {
       admin_users_page(conn, meta, "权限或路径前缀无效")
     } else if meta.update_user(id, role, prefix, enabled) {
@@ -838,7 +852,29 @@ fn valid_llms_prefixes(value : String) -> Bool {
 
 ///|
 fn valid_user_role(value : String) -> Bool {
-  value == "admin" || value == "none" || value == "read" || value == "write"
+  value == "superadmin" ||
+  value == "admin" ||
+  value == "none" ||
+  value == "read" ||
+  value == "write"
+}
+
+///|
+fn session_role(request : @http.Request, login_state : LoginState) -> String {
+  match session_subject(request, login_state) {
+    Some(subject) if subject == "admin" => "superadmin"
+    Some(subject) =>
+      match login_state.subjects.get(subject) {
+        Some(user) if user.enabled => user.role
+        _ => "none"
+      }
+    None => "none"
+  }
+}
+
+///|
+fn can_manage_role(actor : String, target : String) -> Bool {
+  actor == "superadmin" || (actor == "admin" && target != "superadmin")
 }
 
 ///|
@@ -980,13 +1016,13 @@ async fn admin_keys_page_with_notice(
     (if show_tree { " checked" } else { "" }) +
     "> 在阅读页显示文档层级</label><label><input type=\"radio\" name=\"show_tree\" value=\"false\"" +
     (if !show_tree { " checked" } else { "" }) +
-    "> 隐藏文档层级</label></fieldset><fieldset><legend>llms.txt 访问</legend><label><input type=\"radio\" name=\"llms_mode\" value=\"public\"" +
+    "> 隐藏文档层级</label></fieldset><fieldset class=\"llms-settings\"><legend>llms.txt 访问</legend><p class=\"llms-spec\"><a href=\"https://llmstxt.org/\" target=\"_blank\" rel=\"noreferrer\">阅读 llms.txt 规范</a></p><label><input type=\"radio\" name=\"llms_mode\" value=\"public\"" +
     (if llms_mode == "public" { " checked" } else { "" }) +
     "> 完全开放</label><label><input type=\"radio\" name=\"llms_mode\" value=\"partial\"" +
     (if llms_mode == "partial" { " checked" } else { "" }) +
     "> 仅部分路由开放</label><label><input type=\"radio\" name=\"llms_mode\" value=\"disabled\"" +
     (if llms_mode == "disabled" { " checked" } else { "" }) +
-    "> 停用</label><label>开放主题前缀<input name=\"llms_prefixes\" value=\"" +
+    "> 停用</label><label class=\"llms-prefixes\">开放主题前缀<input name=\"llms_prefixes\" value=\"" +
     llms_prefixes +
     "\" placeholder=\"例如 guide,reference\"></label></fieldset><label>产品名<input name=\"product_name\" value=\"" +
     product_name +
@@ -996,7 +1032,7 @@ async fn admin_keys_page_with_notice(
     key_user_options.to_string() +
     "</select></label><label>基础权限<select name=\"scopes\"><option value=\"read\">只读</option><option value=\"read,write\">读写</option></select></label><label>可读路径前缀<input name=\"read_prefix\" placeholder=\"例如 guide\"></label><label>可写路径前缀<input name=\"write_prefix\" placeholder=\"例如 guide\"></label><button>创建密钥</button></form></section><section id=\"users\"><h2>用户与权限</h2><table class=\"user-table\"><thead><tr><th>账号</th><th>权限</th><th>可写范围</th><th>状态</th></tr></thead><tbody>" +
     user_rows.to_string() +
-    "</tbody></table><a class=\"section-link\" href=\"/admin/users\">查看全部用户与详情</a><h3>创建账号</h3><form method=\"post\" action=\"/admin/users\"><label>用户名<input name=\"username\" required></label><label>密码<input name=\"password\" type=\"password\" minlength=\"12\" required></label><label>权限<select name=\"role\"><option value=\"read\">只读文档</option><option value=\"write\">可修改文档</option><option value=\"none\">禁止访问</option><option value=\"admin\">管理员</option></select></label><label>可写路径前缀<input name=\"write_prefix\" placeholder=\"例如 guide\"></label><button>创建用户</button></form></section><section><h2>管理员登录</h2><p>设置后使用这里配置的管理员用户名和 Admin Key 登录，默认用户名为 <code>" +
+    "</tbody></table><a class=\"section-link\" href=\"/admin/users\">查看全部用户与详情</a><h3>创建账号</h3><form method=\"post\" action=\"/admin/users\"><label>用户名<input name=\"username\" required></label><label>密码<input name=\"password\" type=\"password\" minlength=\"12\" required></label><label>权限<select name=\"role\"><option value=\"read\">只读文档</option><option value=\"write\">可修改文档</option><option value=\"none\">禁止访问</option><option value=\"admin\">管理员</option><option value=\"superadmin\">超级管理员</option></select></label><label>可写路径前缀<input name=\"write_prefix\" placeholder=\"例如 guide\"></label><button>创建用户</button></form></section><section><h2>管理员登录</h2><p>设置后使用这里配置的管理员用户名和 Admin Key 登录，默认用户名为 <code>" +
     admin_username +
     "</code>。</p><form method=\"post\" action=\"/admin/auth\"><label>管理员用户名<input name=\"admin_username\" value=\"" +
     admin_username +
@@ -1019,15 +1055,17 @@ async fn admin_users_page(
     )
     rows.write_string(user.id.to_string())
     rows.write_string("\"></td><td><select name=\"role\">")
-    for role in ["read", "write", "none", "admin"] {
+    for role in ["read", "write", "none", "admin", "superadmin"] {
       let label = if role == "read" {
         "只读"
       } else if role == "write" {
         "可编辑"
       } else if role == "none" {
         "禁止访问"
-      } else {
+      } else if role == "admin" {
         "管理员"
+      } else {
+        "超级管理员"
       }
       rows.write_string("<option value=\"" + role + "\"")
       if user.role == role {
@@ -1135,7 +1173,8 @@ fn session_is_admin(
     Some(subject) if subject == "admin" => true
     Some(subject) =>
       match login_state.subjects.get(subject) {
-        Some(user) => user.enabled && user.role == "admin"
+        Some(user) =>
+          user.enabled && (user.role == "admin" || user.role == "superadmin")
         None => false
       }
     None => admin_authenticated(request, admin_session)
@@ -1149,7 +1188,12 @@ fn session_can_edit(request : @http.Request, login_state : LoginState) -> Bool {
     Some(subject) =>
       match login_state.subjects.get(subject) {
         Some(user) =>
-          user.enabled && (user.role == "write" || user.role == "admin")
+          user.enabled &&
+          (
+            user.role == "write" ||
+            user.role == "admin" ||
+            user.role == "superadmin"
+          )
         None => false
       }
     None => false
