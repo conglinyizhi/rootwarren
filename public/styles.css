@@ -100,7 +100,10 @@
 
 * { box-sizing: border-box; }
 
-html { scroll-behavior: smooth; }
+html {
+  scroll-behavior: smooth;
+  background: var(--bg);
+}
 
 body {
   font-family: var(--font-sans);
@@ -109,6 +112,7 @@ body {
   margin: 0;
   padding: 28px 28px 64px;
   width: 100%;
+  min-height: 100vh;
   line-height: 1.7;
   -webkit-font-smoothing: antialiased;
 }
