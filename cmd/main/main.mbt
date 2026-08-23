@@ -1,11 +1,4 @@
 ///|
-struct StartupSession {
-  bootstrap_key : String
-  session_token : String
-  mut consumed : Bool
-}
-
-///|
 struct AdminSession {
   bootstrap_key : String
   session_token : String
@@ -24,12 +17,8 @@ struct LoginState {
 async fn main {
   let storage = @lib.LocalStorage::new("content")
   let meta = @lib.JsonMeta::open("meta")
-  let startup_key = @lib.generate_api_key()
-  let startup_session : StartupSession = {
-    bootstrap_key: startup_key,
-    session_token: @lib.generate_api_key(),
-    consumed: false,
-  }
+  let env = @env.get_env_vars()
+  load_dotenv(env)
   let admin_session : AdminSession = {
     bootstrap_key: @lib.generate_api_key(),
     session_token: @lib.generate_api_key(),
@@ -38,32 +27,50 @@ async fn main {
   let login_state : LoginState = {
     secret: @lib.generate_session_secret(),
     provider: @lib.AdminTokenProvider::new(
-      match @env.get_env_var("ADMIN_TOKEN") {
+      match env.get("ADMIN_TOKEN") {
         Some(value) => value
         None => ""
       },
     ),
     revoked: Map([]),
   }
-  let command = @argparse.Command("mbt-mdwiki", options=[
-    @argparse.OptionArg(
-      "ip",
-      long="ip",
-      about="监听 IP 地址",
-      env="MBT_MDWIKI_IP",
-      default_values=["0.0.0.0"],
-    ),
-    @argparse.OptionArg("port", long="port", about="监听端口", env="PORT", default_values=[
-      "8001",
-    ]),
-  ])
+  let command = @argparse.Command(
+    "mbt-mdwiki",
+    flags=[
+      @argparse.FlagArg(
+        "init-env",
+        long="init-env",
+        about="生成 .env 配置模板后退出",
+      ),
+    ],
+    options=[
+      @argparse.OptionArg(
+        "ip",
+        long="ip",
+        about="监听 IP 地址",
+        env="MBT_MDWIKI_IP",
+        default_values=["0.0.0.0"],
+      ),
+      @argparse.OptionArg(
+        "port",
+        long="port",
+        about="监听端口",
+        env="PORT",
+        default_values=["8001"],
+      ),
+    ],
+  )
   let raw_args = @env.args()
   let argv = match raw_args.get(0) {
     Some(first) if first.has_suffix(".exe") || first.has_suffix("/main") =>
       raw_args[1:]
     _ => raw_args[:]
   }
-  let args = command.parse(argv~, env=@env.get_env_vars())
+  let args = command.parse(argv~, env~)
+  if args.flags.get("init-env") == Some(true) {
+    init_env_file()
+    return
+  }
   let ip = match args.values.get("ip") {
     Some([value, ..]) => value
     _ => "0.0.0.0"
@@ -82,16 +89,12 @@ async fn main {
     }
   }
   println("mbt-mdwiki listening on http://\{ip}:\{port}")
-  println("客户端 Key（本次启动仅显示一次）：\{startup_key}")
-  println(
-    "客户端地址（打开后会自动隐藏 Key）：http://127.0.0.1:\{port}/?api_key=\{startup_key}",
-  )
-  println("文档首页：http://127.0.0.1:\{port}/d/index")
+  println("文档首页：http://\{ip}:\{port}/d/index")
   println(
     "后台地址（一次性登录）：http://127.0.0.1:\{port}/admin/login?admin_key=\{admin_session.bootstrap_key}",
   )
   println(
-    "ADMIN_TOKEN 表单登录：\{if @env.get_env_var("ADMIN_TOKEN") is Some(_) { "已配置" } else { "未配置，将仅使用一次性后台地址" }}",
+    "ADMIN_TOKEN 表单登录：\{if login_state.provider.configured() { "已配置" } else { "未配置，请使用后台 admin key" }}",
   )
   println("REST API: http://127.0.0.1:\{port}/api/v1/docs")
   @signal.set_global_cancellation_signals([
@@ -100,10 +103,36 @@ async fn main {
     @signal.Signal::SIGHUP,
   ])
   server.run_forever() <| ((request, body, conn) => {
-    handle(
-      request, body, conn, storage, meta, startup_session, admin_session, login_state,
-    )
+    handle(request, body, conn, storage, meta, admin_session, login_state)
   })
+}
+
+///|
+async fn load_dotenv(env : Map[String, String]) -> Unit {
+  guard @fs.exists(".env") else { return }
+  let content = @utf8.decode_lossy(@fs.read_file(".env").binary()[:])
+  for line in content.split("\n") {
+    let line = line.trim()
+    if !line.is_empty() && !line.has_prefix("#") {
+      match line.find("=") {
+        Some(i) if !env.contains(line[:i].trim().to_owned()) =>
+          env[line[:i].trim().to_owned()] = line[i + 1:].trim().to_owned()
+        _ => ()
+      }
+    }
+  }
+}
+
+///|
+async fn init_env_file() -> Unit {
+  if @fs.exists(".env") {
+    println(".env 已存在，未覆盖。")
+    return
+  }
+  @fs.write_file(
+    ".env", "# mbt-mdwiki 本地配置模板\n# 后台网页登录密码（用户名固定为 admin）\nADMIN_TOKEN=replace-me\n# 监听地址\nMBT_MDWIKI_IP=0.0.0.0\nPORT=8001\n",
+  )
+  println("已生成 .env 配置模板，请编辑 ADMIN_TOKEN 后再启动。")
 }
 
 ///|
@@ -177,7 +206,6 @@ async fn handle(
   conn : @http.ServerConnection,
   storage : @lib.LocalStorage,
   meta : @lib.JsonMeta,
-  startup_session : StartupSession,
   admin_session : AdminSession,
   login_state : LoginState,
 ) -> Unit {
@@ -187,45 +215,26 @@ async fn handle(
     return
   }
   if request.meth is Get {
-    let (clean_path, query) = split_query(path)
+    let (clean_path, _) = split_query(path)
     if clean_path == "/" {
-      match query_param(query, "api_key") {
-        Some(key) if key == startup_session.bootstrap_key &&
-          !startup_session.consumed => {
-          startup_session.consumed = true
-          respond_with_headers(
-            conn,
-            302,
-            "Found",
-            "text/plain",
-            "正在进入文档站……",
-            {
-              "Location": "/",
-              "Set-Cookie": "mbt_session=\{startup_session.session_token}; Path=/; HttpOnly; SameSite=Lax",
-            },
+      {
+        let public = site_is_public(meta)
+        let can_edit = session_authenticated(
+          request, admin_session, login_state,
+        )
+        if public || can_edit {
+          render_doc_page_by_slug(conn, storage, meta, "index", can_edit)
+        } else {
+          respond_error(
+            conn, 403, "site is private; use the admin bootstrap URL",
           )
-        }
-        _ => {
-          let public = site_is_public(meta)
-          let can_edit = session_authenticated(
-            request, startup_session, admin_session, login_state,
-          )
-          if public || can_edit {
-            render_doc_page_by_slug(conn, storage, meta, "index", can_edit)
-          } else {
-            respond_error(
-              conn, 403, "site is private; use the admin bootstrap URL",
-            )
-          }
         }
       }
       return
     }
   }
   if request.meth is Get && path == "/login" {
-    if session_authenticated(
-        request, startup_session, admin_session, login_state,
-      ) {
+    if session_authenticated(request, admin_session, login_state) {
       respond_with_headers(conn, 302, "Found", "text/plain", "已登录", {
         "Location": "/",
       })
@@ -268,9 +277,7 @@ async fn handle(
     return
   }
   if request.meth is Get && path == "/edit" {
-    if session_authenticated(
-        request, startup_session, admin_session, login_state,
-      ) {
+    if session_authenticated(request, admin_session, login_state) {
       serve_static_file(conn, "frontend/index.html", "text/html; charset=utf-8")
     } else {
       respond_with_headers(
@@ -299,7 +306,7 @@ async fn handle(
     return
   }
   if path.has_prefix("/api/v1/") {
-    handle_api(request, body, conn, storage, meta, startup_session, login_state)
+    handle_api(request, body, conn, storage, meta, login_state)
     return
   }
   if path.has_prefix("/admin") {
@@ -308,16 +315,12 @@ async fn handle(
   }
   if request.meth is Get && path.has_prefix("/d/") {
     if site_is_public(meta) ||
-      session_authenticated(
-        request, startup_session, admin_session, login_state,
-      ) {
+      session_authenticated(request, admin_session, login_state) {
       render_doc_page(
         request,
         conn,
         storage,
-        session_authenticated(
-          request, startup_session, admin_session, login_state,
-        ),
+        session_authenticated(request, admin_session, login_state),
       )
     } else {
       respond_error(conn, 403, "site is private; use the admin bootstrap URL")
@@ -334,10 +337,9 @@ async fn handle_api(
   conn : @http.ServerConnection,
   storage : @lib.LocalStorage,
   meta : @lib.JsonMeta,
-  startup_session : StartupSession,
   login_state : LoginState,
 ) -> Unit {
-  // 鉴权：优先 Bearer；启动链接兑换到的进程内会话只在本次服务运行中有效。
+  // 鉴权：优先 Bearer；网页登录 JWT 只在本次服务运行中有效。
   let scopes = match extract_bearer(request) {
     Some(key) => meta.verify_api_key(key)
     None =>
@@ -345,12 +347,7 @@ async fn handle_api(
         Some(token) if !login_state.revoked.contains(token) &&
           @lib.verify_jwt(login_state.secret, token) is Some(_) =>
           Some("read,write")
-        _ =>
-          match extract_cookie(request, "mbt_session") {
-            Some(token) if token == startup_session.session_token =>
-              Some("read,write")
-            _ => None
-          }
+        _ => None
       }
   }
   let scopes = match scopes {
@@ -514,11 +511,7 @@ async fn handle_admin(
   if request.meth is Post && clean_path == "/admin/login" {
     let form = @utf8.decode_lossy(body.read_all().binary()[:])
     let token = form_value(form, "token")
-    let expected = match @env.get_env_var("ADMIN_TOKEN") {
-      Some(value) => value
-      None => ""
-    }
-    if expected != "" && token == expected {
+    if login_state.provider.verify("admin", token) {
       let auth_token = @lib.issue_jwt(login_state.secret, "admin")
       respond_with_headers(conn, 302, "Found", "text/plain", "redirecting", {
         "Location": "/admin/keys",
@@ -529,12 +522,7 @@ async fn handle_admin(
     }
     return
   }
-  if !session_authenticated(
-      request,
-      StartupSession::{ bootstrap_key: "", session_token: "", consumed: true },
-      admin_session,
-      login_state,
-    ) {
+  if !session_authenticated(request, admin_session, login_state) {
     respond_with_headers(conn, 302, "Found", "text/plain", "login required", {
       "Location": "/admin/login",
     })
@@ -623,25 +611,14 @@ fn admin_authenticated(
       }
     }
   }
-  let expected = match @env.get_env_var("ADMIN_TOKEN") {
-    Some(value) => value
-    None => ""
-  }
-  if expected.is_empty() {
-    false
-  } else {
-    match extract_cookie(request, "admin_token") {
-      Some(value) => value == expected
-      None => false
-    }
-  }
+  false
 }
 
 ///|
 async fn login_page(conn : @http.ServerConnection, notice : String) -> Unit {
-  let page = "<!doctype html><html lang=\"zh-CN\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>登录</title><style>body{font-family:sans-serif;max-width:420px;margin:80px auto;padding:24px;background:#111518;color:#d8dfda}form{display:grid;gap:14px}input,button{padding:10px;background:#18201b;color:#e5eee5;border:1px solid #526653;border-radius:4px}button{cursor:pointer}</style></head><body><h1>登录 mbt-mdwiki</h1><p>" +
+  let page = "<!doctype html><html lang=\"zh-CN\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>登录</title><style>body{font-family:Inter,\"Noto Sans SC\",sans-serif;max-width:460px;margin:64px auto;padding:28px;background:#111518;color:#d8dfda}.panel{background:#171c1a;border:1px solid #39463d;border-radius:6px;padding:28px}form{display:grid;gap:16px}.field{display:grid;grid-template-columns:64px minmax(0,1fr);align-items:center;gap:14px}.field label{min-width:64px}input,button{box-sizing:border-box;width:100%;padding:10px;background:#18201b;color:#e5eee5;border:1px solid #526653;border-radius:4px}button{cursor:pointer}.back{display:inline-block;margin-top:18px;padding:9px 14px;background:#263322;border:1px solid #718a61;border-radius:4px;color:#e4eedf;text-decoration:none}</style></head><body><section class=\"panel\"><h1>登录</h1><p>" +
     notice +
-    "</p><form method=\"post\" action=\"/login\"><label>用户名<input name=\"username\" autocomplete=\"username\"></label><label>密码<input name=\"password\" type=\"password\" autocomplete=\"current-password\"></label><button type=\"submit\">登录</button></form><p><a href=\"/\">返回文档</a></p></body></html>"
+    "</p><form method=\"post\" action=\"/login\"><div class=\"field\"><label for=\"username\">用户名</label><input id=\"username\" name=\"username\" autocomplete=\"username\"></div><div class=\"field\"><label for=\"password\">密码</label><input id=\"password\" name=\"password\" type=\"password\" autocomplete=\"current-password\"></div><button type=\"submit\">登录</button></form><a class=\"back\" href=\"/\">返回文档</a></section></body></html>"
   respond(conn, 200, "text/html; charset=utf-8", page)
 }
 
@@ -650,7 +627,7 @@ async fn admin_login_page(
   conn : @http.ServerConnection,
   notice : String,
 ) -> Unit {
-  let page = "<!doctype html><html><body><h1>mbt-mdwiki admin</h1><p>" +
+  let page = "<!doctype html><html><body><h1>后台登录</h1><p>" +
     notice +
     "</p><form method=\"post\" action=\"/admin/login\"><label>Admin token <input name=\"token\" type=\"password\"></label><button>Login</button></form></body></html>"
   respond(conn, 200, "text/html; charset=utf-8", page)
@@ -687,7 +664,11 @@ async fn admin_keys_page_with_notice(
     rows.write_string(key.id.to_string())
     rows.write_string("\"><button>Revoke</button></form></li>")
   }
-  let page = "<!doctype html><html lang=\"zh-CN\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>后台管理 - mbt-mdwiki</title><style>body{font-family:Inter,\"Noto Sans SC\",sans-serif;max-width:900px;margin:0 auto;padding:32px 20px;background:#111518;color:#d8dfda}h1{font-weight:500}section{border:1px solid #39463d;border-radius:6px;padding:22px;margin:18px 0;background:#171c1a}fieldset{border:1px solid #3d4d41;border-radius:4px;padding:14px;margin:14px 0}legend{color:#b9caa9;padding:0 6px}label{display:block;margin:10px 0;color:#c5cec7}button{padding:8px 12px;border:1px solid #718a61;border-radius:4px;background:#263322;color:#e4eedf}input,select{padding:8px;background:#111817;color:#e1e9e2;border:1px solid #48574d;border-radius:3px}li{margin:10px 0}</style></head><body><h1>mbt-mdwiki 后台管理</h1><p>" +
+  let page = "<!doctype html><html lang=\"zh-CN\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>后台管理 - " +
+    product_name +
+    "</title><style>body{font-family:Inter,\"Noto Sans SC\",sans-serif;max-width:900px;margin:0 auto;padding:32px 20px;background:#111518;color:#d8dfda}h1{font-weight:500}section{border:1px solid #39463d;border-radius:6px;padding:22px;margin:18px 0;background:#171c1a}fieldset{border:1px solid #3d4d41;border-radius:4px;padding:14px;margin:14px 0}legend{color:#b9caa9;padding:0 6px}label{display:block;margin:10px 0;color:#c5cec7}button{padding:8px 12px;border:1px solid #718a61;border-radius:4px;background:#263322;color:#e4eedf}input,select{padding:8px;background:#111817;color:#e1e9e2;border:1px solid #48574d;border-radius:3px}li{margin:10px 0}</style></head><body><h1>" +
+    product_name +
+    " 后台管理</h1><p>" +
     notice +
     "</p><section><h2>网站访问</h2><p>当前状态：" +
     (if public { "公开浏览" } else { "仅登录可见" }) +
@@ -734,18 +715,13 @@ async fn site_show_tree(meta : @lib.JsonMeta) -> Bool {
 ///|
 fn session_authenticated(
   request : @http.Request,
-  startup_session : StartupSession,
   admin_session : AdminSession,
   login_state : LoginState,
 ) -> Bool {
-  match extract_cookie(request, "mbt_session") {
-    Some(token) if token == startup_session.session_token => true
-    _ =>
-      match extract_cookie(request, "mbt_auth") {
-        Some(token) if !login_state.revoked.contains(token) =>
-          @lib.verify_jwt(login_state.secret, token) is Some(_)
-        _ => admin_authenticated(request, admin_session)
-      }
+  match extract_cookie(request, "mbt_auth") {
+    Some(token) if !login_state.revoked.contains(token) =>
+      @lib.verify_jwt(login_state.secret, token) is Some(_)
+    _ => admin_authenticated(request, admin_session)
   }
 }
 

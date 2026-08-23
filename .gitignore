@@ -6,5 +6,8 @@ target
 .moonagent/
 .repos/
 
+.env
+.env.*
+!.env.example
 meta/*
 !meta/.gitkeep

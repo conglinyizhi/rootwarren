@@ -165,15 +165,9 @@ GET /frontend.js
 
 The client implementation brief is in [`docs/CLIENT.md`](CLIENT.md).
 
-### Startup Bootstrap URL
+### Startup Admin URL
 
-Each server start generates one random bootstrap URL printed only in the console:
-
-```text
-http://127.0.0.1:8001/?api_key=mk_...
-```
-
-The first request to that URL exchanges the key for an HttpOnly `mbt_session` cookie and returns `302 Location: /`. The bootstrap key is held only in process memory, is invalid after one exchange, and is not stored in `meta/api_keys.json`. The session expires when the server process stops. A normal API key still uses `Authorization: Bearer <key>`. The admin bootstrap URL is independent from client API keys: it always exists for each server process, exchanges for an HttpOnly `mbt_auth` JWT cookie, and does not create a persistent API key. The JWT is signed with an in-memory process secret, so it remains valid until logout or server shutdown. When `ADMIN_TOKEN` is configured, `/login` accepts username `admin` and that token as the password. When it is unset, use the admin bootstrap URL printed by the console; the bootstrap key is generated regardless of `ADMIN_TOKEN`.
+Each server start generates one random, one-time admin URL printed only in the console. Opening it exchanges the key for an HttpOnly `mbt_auth` JWT Cookie and redirects to the admin page. The key does not create a persistent API key. The JWT uses an in-memory process secret and remains valid until logout or server shutdown. When `ADMIN_TOKEN` is configured, `/login` accepts username `admin` and that token as the password. When it is unset, use the admin URL printed by the console. Browser users no longer need a client bootstrap key. Normal API clients still use `Authorization: Bearer <api_key>`.
 
 ## Public Browser View
 

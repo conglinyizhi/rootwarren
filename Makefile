@@ -4,13 +4,16 @@
 MOON ?= moon
 export MOON_CC ?= gcc
 
-.PHONY: run build build-frontend test check fmt clean
+.PHONY: run build build-frontend test check fmt clean init-env
 
 build-frontend:
 	$(MOON) build frontend --target js
 
 run: build-frontend
 	$(MOON) run cmd/main -- $(ARGS)
+
+init-env:
+	$(MOON) run cmd/main -- --init-env
 
 build: build-frontend
 	$(MOON) build cmd/main --target native

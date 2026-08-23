@@ -28,15 +28,20 @@ The current MoonBit nightly needs `MOON_CC=gcc` on this host because its automat
 
 ```sh
 make check
-PORT=8001 ADMIN_TOKEN=replace-me make run
-# 或：make run ARGS="--ip 127.0.0.1 --port 9000"
+cp .env.example .env
+# 编辑 .env 中的 ADMIN_TOKEN 后：
+make run
+# 或：make init-env
+# 也可用参数覆盖监听地址：
+make run ARGS="--ip 127.0.0.1 --port 9000"
 ```
 
-`make run` builds the MoonBit JS client first, then starts the native server. The startup log prints one entropy-generated, single-use bootstrap URL in the form `/?api_key=...`; opening it exchanges the key for an HttpOnly, in-process session cookie and redirects to `/`, removing the key from the address bar. The log also prints the public document URL (`/d/index`), admin URL, and REST API URL. Use `make build-frontend` when only the browser bundle is needed.
+`make run` builds the MoonBit JS client first, then starts the native server. The startup log prints the public document URL (`/d/index`), one-time admin URL, and REST API URL. 客户端 bootstrap key 已移除；后台首次进入使用控制台打印的 admin URL，或在 `.env` 配置 `ADMIN_TOKEN` 后使用网页登录。执行 `make init-env` 可生成 `.env` 模板，已有文件不会覆盖。Use `make build-frontend` when only the browser bundle is needed.
 
 - `--ip` / `MBT_MDWIKI_IP` defaults to `0.0.0.0`.
 - `--port` / `PORT` defaults to `8001`.
-- `ADMIN_TOKEN` enables fixed-token form login for `/admin/*`. If it is unset, use the one-time random admin URL printed at startup; do not expose that URL or token in logs beyond the local console.
+- `.env` is ignored by git; use `.env.example` as the template. Shell environment variables override `.env` values.
+- `ADMIN_TOKEN` enables fixed-token form login. If it is unset, use the one-time random admin URL printed at startup; do not expose that URL or token beyond the local console.
 - Use `make test` when tests exist. Run `moon fmt` after source changes.
 - For the client shell check: `curl http://127.0.0.1:8001/`.
 - For the public page check: `curl http://127.0.0.1:8001/d/index`.
@@ -49,7 +54,7 @@ PORT=8001 ADMIN_TOKEN=replace-me make run
 - Clients authenticate with `Authorization: Bearer <api_key>`.
 - Keys have `read` or `read,write` scopes.
 - API-key plaintext is shown only on admin creation; only the SHA-256 hash is persisted.
-- Use the admin page to create/revoke keys. It authenticates through the one-time startup admin URL, or through `ADMIN_TOKEN` form login when configured; both produce an HttpOnly cookie.
+- Use the admin page to create/revoke API keys. It authenticates through the one-time admin URL, or through `ADMIN_TOKEN` form login when configured; both produce the in-process JWT session cookie.
 - Do not log request authorization headers or generated plaintext keys.
 
 ## MoonBit Notes
