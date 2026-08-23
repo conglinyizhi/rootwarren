@@ -364,7 +364,13 @@ async fn main {
       match storage.read(slug) {
         Some(raw) => {
           let html = @lib.render_doc_html(raw)
-          res.send_json({ "slug": Json::string(slug), "html": Json::string(html) })
+          let dm = @lib.document_meta(raw)
+          res.send_json({
+            "slug": Json::string(slug),
+            "html": Json::string(html),
+            "category": Json::string(dm.category),
+            "status": Json::string(dm.status),
+          })
         }
         None => {
           res.send_json({ "error": Json::string("not found") }, status=404)

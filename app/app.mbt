@@ -49,6 +49,8 @@ pub enum Msg {
   SetKeyWritePrefix(String)
   CreateKey
   KeyCreated(Result[String, Error])
+  // 分类管理
+  AdminCategoriesLoaded(Result[String, Error])
 }
 
 ///|
@@ -76,6 +78,9 @@ pub struct Model {
   key_scopes : String
   key_read_prefix : String
   key_write_prefix : String
+  categories : Array[String]
+  active_category : String
+  active_status : String
 } derive(Eq)
 
 ///|
@@ -129,6 +134,9 @@ pub fn initial_model() -> Model {
     key_scopes: "read",
     key_read_prefix: "",
     key_write_prefix: "",
+    categories: [],
+    active_category: "",
+    active_status: "",
   }
 }
 
@@ -239,6 +247,39 @@ fn extract_key(raw : String) -> String {
 }
 
 ///|
+fn parse_categories(raw : String) -> Array[String] {
+  let json = @json.parse(raw) catch { _ => return [] }
+  let result : Array[String] = []
+  if json is Json::Object(map) {
+    if map.get("categories") is Some(Json::Array(items)) {
+      for item in items {
+        if item is Json::Object(c) {
+          result.push(
+            match c.get("name") {
+              Some(Json::String(name)) => name
+              _ => ""
+            },
+          )
+        }
+      }
+    }
+  }
+  result
+}
+
+///|
+fn parse_field(raw : String, field : String) -> String {
+  let json = @json.parse(raw) catch { _ => return "" }
+  match json {
+    Json::Object(map) => match map.get(field) {
+      Some(Json::String(v)) => v
+      _ => ""
+    }
+    _ => ""
+  }
+}
+
+///|
 pub fn update(model : Model, msg : Msg, emit : Emit[Msg]) -> (Model, Cmd) {
   match msg {
     LoadDocs =>
@@ -317,6 +358,14 @@ pub fn update(model : Model, msg : Msg, emit : Emit[Msg]) -> (Model, Cmd) {
             Ok(raw) => parse_html(raw)
             Err(_) => ""
           },
+          active_category: match result {
+            Ok(raw) => parse_field(raw, "category")
+            Err(_) => ""
+          },
+          active_status: match result {
+            Ok(raw) => parse_field(raw, "status")
+            Err(_) => ""
+          },
           status: match result {
             Ok(_) => "已打开 " + slug + "。"
             Err(_) => "打开文档失败。"
@@ -373,6 +422,7 @@ pub fn update(model : Model, msg : Msg, emit : Emit[Msg]) -> (Model, Cmd) {
           @http.get("/api/admin/users").expect_text(emit.map(result => AdminUsersLoaded(result))),
           @http.get("/api/admin/site").expect_text(emit.map(result => AdminSiteLoaded(result))),
           @http.get("/api/admin/keys").expect_text(emit.map(result => AdminKeysLoaded(result))),
+          @http.get("/api/v1/categories").expect_text(emit.map(result => AdminCategoriesLoaded(result))),
         ]),
       )
     HideAdmin => ({ ..model, admin_view: false }, @rabbita.none)
@@ -435,6 +485,18 @@ pub fn update(model : Model, msg : Msg, emit : Emit[Msg]) -> (Model, Cmd) {
           busy: false,
           keys: match result {
             Ok(raw) => parse_keys(raw)
+            Err(_) => []
+          },
+        },
+        @rabbita.none,
+      )
+    AdminCategoriesLoaded(result) =>
+      (
+        {
+          ..model,
+          busy: false,
+          categories: match result {
+            Ok(raw) => parse_categories(raw)
             Err(_) => []
           },
         },
@@ -540,6 +602,11 @@ pub fn app() -> Val[Html] {
         ]),
         button(on_click=emit(CreateKey), attrs=@html.Attrs::build().data_set("name", "create-key-button"), "创建密钥"),
       ]),
+      section(class="admin-section", [
+        h3("分类"),
+        ul(model.categories.map(fn(c) { li(c) })),
+        p("在文档 front matter 的 category 字段填入分类 slug 即可归入。"),
+      ]),
     ])
     let editor = if model.editing {
       div(class="editor", [
@@ -551,6 +618,10 @@ pub fn app() -> Val[Html] {
       ])
     } else {
       div(class="readonly", [
+        div(class="meta-bar", [
+          (if model.active_category.is_empty() { @html.nothing } else { span(class="badge", "分类：" + model.active_category) }),
+          (if model.active_status.is_empty() || model.active_status == "public" { @html.nothing } else { span(class="badge", "状态：" + model.active_status) }),
+        ]),
         div(attrs=@html.Attrs::build().data_set("name", "document-content").inner_html(model.active_html), @html.nothing),
         button(on_click=emit(Edit), attrs=@html.Attrs::build().data_set("name", "edit-button"), "编辑"),
       ])
