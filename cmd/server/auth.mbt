@@ -214,6 +214,10 @@ pub async fn AuthState::docs_auth(
       }
     None => ()
   }
+  // 3. 公开站点：匿名可读（site.public=true）
+  if site_is_public(meta) {
+    return { scopes: "read", read_prefix: "", write_prefix: "" }
+  }
   { scopes: "", read_prefix: "", write_prefix: "" }
 }
 
