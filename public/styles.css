@@ -106,9 +106,9 @@ body {
   font-family: var(--font-sans);
   color: var(--fg);
   background: var(--bg);
-  margin: 0 auto;
-  padding: 28px 20px 64px;
-  max-width: 1180px;
+  margin: 0;
+  padding: 28px 28px 64px;
+  width: 100%;
   line-height: 1.7;
   -webkit-font-smoothing: antialiased;
 }

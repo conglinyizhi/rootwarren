@@ -40,7 +40,6 @@ using @html {
 ///|
 pub enum Msg {
   Init
-  LoadDocs
   SelectDoc(String)
   SetQuery(String)
   Logout
@@ -349,11 +348,6 @@ pub fn update(model : Model, msg : Msg, emit : Emit[Msg]) -> (Model, Cmd) {
             emit.map(result => DocLoaded("index", result)),
           ),
         ]),
-      )
-    LoadDocs =>
-      (
-        { ..model, busy: true, status: "正在加载文档……" },
-        load_docs_cmd(emit),
       )
     SelectDoc(slug) =>
       (
@@ -667,6 +661,7 @@ pub fn app() -> Val[Html] {
         a(
           class="button",
           href="/sys/login",
+          escape=true,
           attrs=@html.Attrs::build().data_set("name", "login-link"),
           "登录",
         ),
@@ -828,13 +823,12 @@ pub fn app() -> Val[Html] {
     }
     let workspace_view = div(class="workspace", [
       div(class="sidebar", [
-        div(class="sidebar-brand", [h2(model.title), p("Wiki")]),
         details(open=true, class="sidebar-group", [
           summary("导航"),
           ul([
-            li([a(href="/", "首页")]),
-            li([a(href="/feed", "最近更新")]),
-            li([a(href="/llms.txt", "LLM 文档索引")]),
+            li([a(href="/", escape=true, "首页")]),
+            li([a(href="/feed", escape=true, "最近更新")]),
+            li([a(href="/llms.txt", escape=true, "LLM 文档索引")]),
           ]),
         ]),
         details(open=true, class="sidebar-group", [
@@ -848,14 +842,14 @@ pub fn app() -> Val[Html] {
         details(class="sidebar-group", [
           summary("工具"),
           ul([
-            li([a(href="/api/v1/docs", "文档 API")]),
-            li([a(href="/docs/API.md", "API 说明")]),
-            li([a(href="/feed", "RSS 订阅")]),
+            li([a(href="/api/v1/docs", escape=true, "文档 API")]),
+            li([a(href="/docs/API.md", escape=true, "API 说明")]),
+            li([a(href="/feed", escape=true, "RSS 订阅")]),
           ]),
         ]),
         details(class="sidebar-group", [
           summary("其他页面"),
-          ul([li([a(href="/sys/login", "登录")])]),
+          ul([li([a(href="/sys/login", escape=true, "登录")])]),
         ]),
       ]),
       div(class="editor-panel", [
@@ -867,7 +861,7 @@ pub fn app() -> Val[Html] {
             attrs=@html.Attrs::build().data_set("name", "edit-tab"),
             "编辑",
           ),
-          a(class="wiki-tab", href="#history", "查看历史"),
+          a(class="wiki-tab", href="#history", escape=true, "查看历史"),
         ]),
         h2(active_title),
         editor,
@@ -893,14 +887,6 @@ pub fn app() -> Val[Html] {
           div(class="topbar", [
             h1(model.title + " 文档站"),
             div(class="controls", [
-              button(
-                class="button",
-                on_click=emit(LoadDocs),
-                attrs=@html.Attrs::build().data_set(
-                  "name", "load-documents-button",
-                ),
-                "加载文档",
-              ),
               input(
                 input_type=@html.InputType::Search,
                 placeholder="搜索文档",
