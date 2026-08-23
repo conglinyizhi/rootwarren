@@ -294,6 +294,22 @@ async fn main {
       let page = render_doc_page(storage, meta, auth, req, slug)
       res.send_html(@moonback.Html::raw(page))
     })
+    // Typecho 式文章固定链接别名（/posts/{slug}），与 /d/{slug} 渲染一致
+    ctx.get("/posts/*slug", (req, res) => {
+      if !site_is_public(meta) && auth.authenticate(req) is None {
+        res.send_text("site is private; login required", status=403)
+        return
+      }
+      let slug = match req.params.get("slug") {
+        Some(s) => s.to_owned()
+        None => {
+          res.send_text("missing slug", status=400)
+          return
+        }
+      }
+      let page = render_doc_page(storage, meta, auth, req, slug)
+      res.send_html(@moonback.Html::raw(page))
+    })
 
     ctx.get("/api/v1/categories", (_req, res) => {
       let cats = category_list(storage, meta)
