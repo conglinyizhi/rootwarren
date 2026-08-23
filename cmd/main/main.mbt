@@ -312,6 +312,10 @@ async fn handle(
     }
     return
   }
+  if request.meth is Get && path == "/site.css" {
+    serve_static_file(conn, "frontend/site.css", "text/css; charset=utf-8")
+    return
+  }
   if request.meth is Get && path == "/frontend.js" {
     serve_static_file(
       conn, "_build/js/debug/build/frontend/frontend.js", "application/javascript; charset=utf-8",
@@ -319,10 +323,10 @@ async fn handle(
     return
   }
   if request.meth is Get && path == "/llms.txt" {
-    if site_is_public(meta) {
-      serve_llms(conn, storage)
-    } else {
-      respond_error(conn, 403, "site is private; use the admin bootstrap URL")
+    match site_llms_mode(meta) {
+      "public" => serve_llms(conn, storage, "")
+      "partial" => serve_llms(conn, storage, site_llms_prefixes(meta))
+      _ => respond_error(conn, 404, "llms.txt is disabled")
     }
     return
   }
@@ -362,11 +366,36 @@ async fn handle_api(
 ) -> Unit {
   // 鉴权：优先 Bearer；网页登录 JWT 只在本次服务运行中有效。
   let mut scopes = ""
+  let mut read_prefix = ""
   let mut write_prefix = ""
   match extract_bearer(request) {
     Some(key) =>
       match meta.verify_api_key(key) {
-        Some(value) => scopes = value
+        Some(record) => {
+          scopes = record.scopes
+          read_prefix = record.read_prefix
+          write_prefix = record.write_prefix
+          if record.user_id > 0 {
+            match meta.find_user_by_id(record.user_id) {
+              Some(user) => {
+                if user.role == "none" {
+                  scopes = ""
+                } else if user.role == "read" {
+                  scopes = "read"
+                } else if user.role == "write" && !can_write(scopes) {
+                  scopes = "read"
+                }
+                if !user.write_prefix.is_empty() {
+                  write_prefix = intersect_prefix(
+                    write_prefix,
+                    user.write_prefix,
+                  )
+                }
+              }
+              None => scopes = ""
+            }
+          }
+        }
         None => {
           respond_error(conn, 401, "invalid or missing API key")
           return
@@ -408,8 +437,10 @@ async fn handle_api(
         return
       }
       match slug {
-        Some(s) => read_doc(request, conn, storage, s)
-        None => list_docs(conn, storage)
+        Some(s) if allowed_read_prefix(read_prefix, s) =>
+          read_doc(request, conn, storage, s)
+        Some(_) => respond_error(conn, 403, "document outside readable range")
+        None => list_docs_with_prefix(conn, storage, read_prefix)
       }
     }
     (Put, "docs") => {
@@ -432,7 +463,12 @@ async fn handle_api(
         None => respond_error(conn, 400, "slug required in path")
       }
     }
-    (Get, "search") => search_docs(request, conn, storage)
+    (Get, "search") =>
+      if !can_read(scopes) {
+        respond_error(conn, 403, "read permission required")
+      } else {
+        search_docs(request, conn, storage, read_prefix)
+      }
     (Get, "config") => {
       if !can_read(scopes) {
         respond_error(conn, 403, "read permission required")
@@ -452,6 +488,26 @@ fn can_read(scopes : String) -> Bool {
     }
   }
   false
+}
+
+///|
+fn allowed_read_prefix(prefix : String, slug : String) -> Bool {
+  prefix.is_empty() || slug == prefix || slug.has_prefix(prefix + "/")
+}
+
+///|
+fn intersect_prefix(first : String, second : String) -> String {
+  if first.is_empty() {
+    second
+  } else if second.is_empty() {
+    first
+  } else if first == second || first.has_prefix(second + "/") {
+    first
+  } else if second.has_prefix(first + "/") {
+    second
+  } else {
+    "__no_access__"
+  }
 }
 
 ///|
@@ -593,6 +649,14 @@ async fn handle_admin(
     let form = @utf8.decode_lossy(body.read_all().binary()[:])
     let name = form_value(form, "name")
     let scopes = form_value(form, "scopes")
+    let user_id = parse_nonnegative_int(form_value(form, "user_id"))
+    let read_prefix = form_value(form, "read_prefix")
+    let write_prefix = form_value(form, "write_prefix")
+    if (!read_prefix.is_empty() && !@lib.valid_slug(read_prefix)) ||
+      (!write_prefix.is_empty() && !@lib.valid_slug(write_prefix)) {
+      admin_keys_page_with_notice(conn, meta, "API 密钥范围路径无效")
+      return
+    }
     let key = meta.create_api_key(
       name,
       if scopes == "" {
@@ -600,6 +664,9 @@ async fn handle_admin(
       } else {
         scopes
       },
+      user_id,
+      read_prefix,
+      write_prefix,
     )
     admin_keys_page_with_notice(conn, meta, "已创建访问密钥：" + key)
     return
@@ -628,6 +695,34 @@ async fn handle_admin(
       admin_keys_page_with_notice(conn, meta, "账号已创建")
     } else {
       admin_keys_page_with_notice(conn, meta, "用户名已存在")
+    }
+    return
+  }
+  if request.meth is Post && clean_path == "/admin/users/password" {
+    let form = @utf8.decode_lossy(body.read_all().binary()[:])
+    let id = parse_nonnegative_int(form_value(form, "id"))
+    let password = form_value(form, "password")
+    let mut target_is_admin = false
+    for user in meta.list_users() {
+      if user.id == id && user.role == "admin" {
+        target_is_admin = true
+      }
+    }
+    if password.length() < 12 || target_is_admin {
+      admin_users_page(
+        conn, meta, "密码至少 12 个字符，且不可由此重置管理员账号密码",
+      )
+    } else if meta.reset_user_password(id, password) {
+      for token, subject in login_state.active_tokens {
+        for user in meta.list_users() {
+          if user.id == id && subject == user.username {
+            login_state.revoked[token] = true
+          }
+        }
+      }
+      admin_users_page(conn, meta, "用户密码已重置，旧会话已撤销")
+    } else {
+      admin_users_page(conn, meta, "用户不存在")
     }
     return
   }
@@ -680,8 +775,23 @@ async fn handle_admin(
     let public = form_value(form, "public") == "true"
     let show_tree = form_value(form, "show_tree") != "false"
     let product_name = form_value(form, "product_name")
+    let llms_mode = form_value(form, "llms_mode")
+    let llms_prefixes = form_value(form, "llms_prefixes")
+    if !valid_llms_prefixes(llms_prefixes) {
+      admin_keys_page_with_notice(conn, meta, "llms.txt 路径前缀无效")
+      return
+    }
     meta.set_config("site.public", if public { "true" } else { "false" })
     meta.set_config("site.show_tree", if show_tree { "true" } else { "false" })
+    meta.set_config(
+      "site.llms_mode",
+      if llms_mode == "partial" || llms_mode == "disabled" {
+        llms_mode
+      } else {
+        "public"
+      },
+    )
+    meta.set_config("site.llms_prefixes", llms_prefixes)
     meta.set_config(
       "site.title",
       if product_name.is_empty() {
@@ -709,6 +819,17 @@ fn valid_username(value : String) -> Bool {
       (c >= '0' && c <= '9') ||
       c == '_' ||
       c == '-') {
+      return false
+    }
+  }
+  true
+}
+
+///|
+fn valid_llms_prefixes(value : String) -> Bool {
+  for prefix in value.split(",") {
+    let prefix = prefix.trim().to_owned()
+    if !prefix.is_empty() && !@lib.valid_slug(prefix) {
       return false
     }
   }
@@ -759,9 +880,9 @@ fn admin_authenticated(
 
 ///|
 async fn login_page(conn : @http.ServerConnection, notice : String) -> Unit {
-  let page = "<!doctype html><html lang=\"zh-CN\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>登录</title><style>body{font-family:Inter,\"Noto Sans SC\",sans-serif;max-width:460px;margin:64px auto;padding:28px;background:#111518;color:#d8dfda}.panel{background:#171c1a;border:1px solid #39463d;border-radius:6px;padding:28px}form{display:grid;gap:16px}.field{display:grid;grid-template-columns:64px minmax(0,1fr);align-items:center;gap:14px}.field label{min-width:64px}input,button{box-sizing:border-box;width:100%;padding:10px;background:#18201b;color:#e5eee5;border:1px solid #526653;border-radius:4px}button{cursor:pointer}.back{display:inline-block;margin-top:18px;padding:9px 14px;background:#263322;border:1px solid #718a61;border-radius:4px;color:#e4eedf;text-decoration:none}</style></head><body><section class=\"panel\"><h1>登录</h1><p>" +
+  let page = "<!doctype html><html lang=\"zh-CN\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>登录</title><link rel=\"stylesheet\" href=\"/site.css\"></head><body class=\"login-shell\"><section class=\"panel\"><h1>登录</h1><p>" +
     notice +
-    "</p><form method=\"post\" action=\"/login\"><div class=\"field\"><label for=\"username\">用户名</label><input id=\"username\" name=\"username\" autocomplete=\"username\"></div><div class=\"field\"><label for=\"password\">密码</label><input id=\"password\" name=\"password\" type=\"password\" autocomplete=\"current-password\"></div><button type=\"submit\">登录</button></form><a class=\"back\" href=\"/\">返回文档</a></section></body></html>"
+    "</p><form method=\"post\" action=\"/login\"><div class=\"field\"><label for=\"username\">用户名</label><input id=\"username\" name=\"username\" autocomplete=\"username\"></div><div class=\"field\"><label for=\"password\">密码</label><input id=\"password\" name=\"password\" type=\"password\" autocomplete=\"current-password\"></div><button type=\"submit\">登录</button></form><a class=\"button\" href=\"/\">返回文档</a></section></body></html>"
   respond(conn, 200, "text/html; charset=utf-8", page)
 }
 
@@ -791,8 +912,19 @@ async fn admin_keys_page_with_notice(
   notice : String,
 ) -> Unit {
   let rows = StringBuilder()
+  let key_user_options = StringBuilder()
+  key_user_options.write_string("<option value=\"0\">不绑定用户</option>")
   let user_rows = StringBuilder()
   let users = meta.list_users()
+  for user in users {
+    if user.enabled {
+      key_user_options.write_string("<option value=\"")
+      key_user_options.write_string(user.id.to_string())
+      key_user_options.write_string("\">")
+      key_user_options.write_string(user.username)
+      key_user_options.write_string("</option>")
+    }
+  }
   for i in 0..<users.length() {
     if i >= 10 {
       break
@@ -812,6 +944,8 @@ async fn admin_keys_page_with_notice(
   }
   let public = site_is_public(meta)
   let show_tree = site_show_tree(meta)
+  let llms_mode = site_llms_mode(meta)
+  let llms_prefixes = site_llms_prefixes(meta)
   let product_name = site_product_name(meta)
   let admin_username = match meta.get_config("auth.admin_username") {
     Some(value) if !value.is_empty() => value
@@ -832,7 +966,7 @@ async fn admin_keys_page_with_notice(
   }
   let page = "<!doctype html><html lang=\"zh-CN\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>后台管理 - " +
     product_name +
-    "</title><style>body{font-family:Inter,\"Noto Sans SC\",sans-serif;max-width:1200px;margin:0 auto;padding:32px 20px;background:#111518;color:#d8dfda}h1{font-weight:500}.layout{display:grid;grid-template-columns:190px minmax(0,1fr);gap:24px}aside{position:sticky;top:20px;height:max-content;display:grid;gap:8px;padding:18px;background:#171c1a;border:1px solid #39463d;border-radius:6px}aside a{padding:8px 10px;border-radius:4px;color:#9fc4df;text-decoration:none}aside a:hover{background:#263322}main{min-width:0}section{border:1px solid #39463d;border-radius:6px;padding:22px;margin:18px 0;background:#171c1a}fieldset{border:1px solid #3d4d41;border-radius:4px;padding:14px;margin:14px 0}legend{color:#b9caa9;padding:0 6px}label{display:grid;grid-template-columns:112px minmax(260px,420px);align-items:center;gap:12px;margin:10px 0;color:#c5cec7}label input,label select{min-width:260px;width:100%;box-sizing:border-box}.user-table{width:100%;border-collapse:collapse;margin:12px 0}.user-table th,.user-table td{text-align:left;padding:10px;border-bottom:1px solid #344139}.user-table th{color:#aebcae;font-weight:500}.section-link{display:inline-block;margin:10px 0;color:#9fc4df}button{padding:8px 12px;border:1px solid #718a61;border-radius:4px;background:#263322;color:#e4eedf}input,select{padding:8px;background:#111817;color:#e1e9e2;border:1px solid #48574d;border-radius:3px}li{margin:10px 0}@media(max-width:760px){body{padding:18px 12px}.layout{grid-template-columns:1fr;gap:12px}aside{position:static;grid-template-columns:repeat(2,minmax(0,1fr))}aside strong{grid-column:1/-1}}</style></head><body><div class=\"layout\"><aside><strong>" +
+    "</title><link rel=\"stylesheet\" href=\"/site.css\"></head><body><div class=\"layout\"><aside class=\"sidebar\"><strong>" +
     product_name +
     "</strong><a href=\"#site\">网站设置</a><a href=\"#users\">用户与权限</a><a href=\"#keys\">API 密钥</a><a href=\"/\">返回网站</a></aside><main><h1>后台管理</h1><p>" +
     notice +
@@ -846,11 +980,21 @@ async fn admin_keys_page_with_notice(
     (if show_tree { " checked" } else { "" }) +
     "> 在阅读页显示文档层级</label><label><input type=\"radio\" name=\"show_tree\" value=\"false\"" +
     (if !show_tree { " checked" } else { "" }) +
-    "> 隐藏文档层级</label></fieldset><label>产品名<input name=\"product_name\" value=\"" +
+    "> 隐藏文档层级</label></fieldset><fieldset><legend>llms.txt 访问</legend><label><input type=\"radio\" name=\"llms_mode\" value=\"public\"" +
+    (if llms_mode == "public" { " checked" } else { "" }) +
+    "> 完全开放</label><label><input type=\"radio\" name=\"llms_mode\" value=\"partial\"" +
+    (if llms_mode == "partial" { " checked" } else { "" }) +
+    "> 仅部分路由开放</label><label><input type=\"radio\" name=\"llms_mode\" value=\"disabled\"" +
+    (if llms_mode == "disabled" { " checked" } else { "" }) +
+    "> 停用</label><label>开放主题前缀<input name=\"llms_prefixes\" value=\"" +
+    llms_prefixes +
+    "\" placeholder=\"例如 guide,reference\"></label></fieldset><label>产品名<input name=\"product_name\" value=\"" +
     product_name +
     "\" placeholder=\"mbt-mdwiki\"></label><button>保存网站设置</button></form></section><section id=\"keys\"><h2>访问密钥</h2><ul>" +
     rows.to_string() +
-    "</ul><h3>创建新密钥</h3><form method=\"post\" action=\"/admin/keys\"><input name=\"name\" placeholder=\"密钥名称\"><select name=\"scopes\"><option value=\"read\">只读</option><option value=\"read,write\">读写</option></select><button>创建密钥</button></form></section><section id=\"users\"><h2>用户与权限</h2><table class=\"user-table\"><thead><tr><th>账号</th><th>权限</th><th>可写范围</th><th>状态</th></tr></thead><tbody>" +
+    "</ul><h3>创建新密钥</h3><form method=\"post\" action=\"/admin/keys\"><label>密钥名称<input name=\"name\" required></label><label>绑定用户<select name=\"user_id\">" +
+    key_user_options.to_string() +
+    "</select></label><label>基础权限<select name=\"scopes\"><option value=\"read\">只读</option><option value=\"read,write\">读写</option></select></label><label>可读路径前缀<input name=\"read_prefix\" placeholder=\"例如 guide\"></label><label>可写路径前缀<input name=\"write_prefix\" placeholder=\"例如 guide\"></label><button>创建密钥</button></form></section><section id=\"users\"><h2>用户与权限</h2><table class=\"user-table\"><thead><tr><th>账号</th><th>权限</th><th>可写范围</th><th>状态</th></tr></thead><tbody>" +
     user_rows.to_string() +
     "</tbody></table><a class=\"section-link\" href=\"/admin/users\">查看全部用户与详情</a><h3>创建账号</h3><form method=\"post\" action=\"/admin/users\"><label>用户名<input name=\"username\" required></label><label>密码<input name=\"password\" type=\"password\" minlength=\"12\" required></label><label>权限<select name=\"role\"><option value=\"read\">只读文档</option><option value=\"write\">可修改文档</option><option value=\"none\">禁止访问</option><option value=\"admin\">管理员</option></select></label><label>可写路径前缀<input name=\"write_prefix\" placeholder=\"例如 guide\"></label><button>创建用户</button></form></section><section><h2>管理员登录</h2><p>设置后使用这里配置的管理员用户名和 Admin Key 登录，默认用户名为 <code>" +
     admin_username +
@@ -904,12 +1048,22 @@ async fn admin_users_page(
       rows.write_string(" selected")
     }
     rows.write_string(
-      ">禁用</option></select></td><td><button>保存</button></td></form></tr>",
+      ">禁用</option></select></td><td><button>保存</button></td></form><td>",
     )
+    if user.role != "admin" {
+      rows.write_string(
+        "<form method=\"post\" action=\"/admin/users/password\"><input type=\"hidden\" name=\"id\" value=\"",
+      )
+      rows.write_string(user.id.to_string())
+      rows.write_string(
+        "\"><input name=\"password\" type=\"password\" minlength=\"12\" placeholder=\"新密码\" required><button>重置密码</button></form>",
+      )
+    }
+    rows.write_string("</td></tr>")
   }
-  let page = "<!doctype html><html lang=\"zh-CN\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>用户详情</title><style>body{font-family:Inter,\"Noto Sans SC\",sans-serif;max-width:1180px;margin:0 auto;padding:32px 20px;background:#111518;color:#d8dfda}a{color:#9fc4df}.notice{min-height:24px}.user-table{width:100%;border-collapse:collapse;background:#171c1a;border:1px solid #39463d}.user-table th,.user-table td{padding:10px;text-align:left;border-bottom:1px solid #344139}.user-table input,.user-table select{box-sizing:border-box;min-width:150px;width:100%;padding:8px;background:#111817;color:#e1e9e2;border:1px solid #48574d;border-radius:3px}.user-table button{padding:8px 12px;background:#263322;color:#e4eedf;border:1px solid #718a61;border-radius:4px}@media(max-width:760px){body{padding:18px 12px}.user-table{font-size:13px}.user-table th,.user-table td{padding:7px}.user-table input,.user-table select{min-width:110px}}</style></head><body><p><a href=\"/admin/keys#users\">返回后台概览</a></p><h1>全部用户</h1><p class=\"notice\">" +
+  let page = "<!doctype html><html lang=\"zh-CN\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>用户详情</title><link rel=\"stylesheet\" href=\"/site.css\"></head><body><p><a href=\"/admin/keys#users\">返回后台概览</a></p><h1>全部用户</h1><p class=\"notice\">" +
     notice +
-    "</p><table class=\"user-table\"><thead><tr><th>账号</th><th>权限</th><th>可写范围</th><th>状态</th><th></th></tr></thead><tbody>" +
+    "</p><table class=\"user-table\"><thead><tr><th>账号</th><th>权限</th><th>可写范围</th><th>状态</th><th></th><th>密码</th></tr></thead><tbody>" +
     rows.to_string() +
     "</tbody></table></body></html>"
   respond(conn, 200, "text/html; charset=utf-8", page)
@@ -1109,7 +1263,9 @@ async fn render_doc_page_by_slug(
             "<li><a href=\"/d/" + item + "\">" + item + "</a></li>"
           })
           .join("")
-        "<nav><strong>文档目录</strong><ul>" + items + "</ul></nav>"
+        "<nav class=\"doc-tree\"><strong>文档目录</strong><ul>" +
+        items +
+        "</ul></nav>"
       } else {
         ""
       }
@@ -1142,7 +1298,7 @@ async fn render_doc_page_by_slug(
       }
       let page = "<!doctype html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>" +
         page_title +
-        "</title><style>:root{font-family:Inter,\"Noto Sans SC\",sans-serif;color:#d8dfda;background:#111518}body{margin:0}main{max-width:1080px;margin:0 auto;padding:28px 30px 70px}.topbar{display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #344139;padding-bottom:14px;margin-bottom:24px}.topbar a{text-decoration:none}.topbar .account{font-size:14px}nav{float:right;width:230px;margin:0 0 20px 28px;padding:16px;background:#192319;border:1px solid #334238;border-radius:5px}nav ul{padding-left:20px}nav li{margin:8px 0}article{max-width:760px;line-height:1.8}.breadcrumbs{display:flex;gap:9px;align-items:center;color:#91a59a;font-size:14px;margin-bottom:22px}.breadcrumbs a{color:#8ebbe1}.breadcrumbs strong{color:#e8eee9}.topbar .edit{padding:6px 10px;border:1px solid #48634d;border-radius:4px}article h1,article h2,article h3{color:#eef4ee;line-height:1.3}article code{background:#202a23;padding:2px 5px;border-radius:3px}article pre{background:#0b0e0d;padding:14px;overflow:auto;border:1px solid #2e3d33}.tags{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:18px 0}.tag{padding:3px 9px;border:1px solid #48634d;border-radius:12px;color:#b9d39f;background:#1a2a1d}a{color:#8ebbe1}small{color:#9aa89d}@media(max-width:760px){main{padding:20px 16px}nav{float:none;width:auto;margin:0 0 24px}}</style></head><body><main><div class=\"topbar\"><a href=\"/\">" +
+        "</title><link rel=\"stylesheet\" href=\"/site.css\"></head><body><main class=\"reading-shell\"><div class=\"topbar\"><a href=\"/\">" +
         product_name +
         "</a><span class=\"account\">" +
         (if can_edit {
@@ -1169,14 +1325,41 @@ async fn render_doc_page_by_slug(
 }
 
 ///|
+async fn site_llms_mode(meta : @lib.JsonMeta) -> String {
+  match meta.get_config("site.llms_mode") {
+    Some(value) => value
+    None => "public"
+  }
+}
+
+///|
+async fn site_llms_prefixes(meta : @lib.JsonMeta) -> String {
+  match meta.get_config("site.llms_prefixes") {
+    Some(value) => value
+    None => ""
+  }
+}
+
+///|
 async fn serve_llms(
   conn : @http.ServerConnection,
   storage : @lib.LocalStorage,
+  prefixes : String,
 ) -> Unit {
   let output = StringBuilder()
   output.write_string("# mbt-mdwiki\n\n")
   output.write_string("这是一个由 MoonBit 驱动的 Markdown Wiki。\n\n")
   for slug in storage.list() {
+    let allowed = prefixes.is_empty() ||
+      prefixes
+      .split(",")
+      .any(fn(prefix) {
+        let prefix = prefix.trim().to_owned()
+        slug == prefix || slug.has_prefix(prefix + "/")
+      })
+    if !allowed {
+      continue
+    }
     match storage.read(slug) {
       Some(raw) => {
         let meta = document_meta(raw)
@@ -1197,6 +1380,19 @@ async fn serve_llms(
     }
   }
   respond(conn, 200, "text/plain; charset=utf-8", output.to_string())
+}
+
+///|
+async fn list_docs_with_prefix(
+  conn : @http.ServerConnection,
+  storage : @lib.LocalStorage,
+  prefix : String,
+) -> Unit {
+  let slugs = storage
+    .list()
+    .filter(fn(slug) { allowed_read_prefix(prefix, slug) })
+  let items = slugs.map(fn(slug) { "\"" + slug + "\"" }).join(",")
+  respond(conn, 200, "application/json", "{\"docs\":[" + items + "]}")
 }
 
 ///|
@@ -1265,6 +1461,7 @@ async fn search_docs(
   request : @http.Request,
   conn : @http.ServerConnection,
   storage : @lib.LocalStorage,
+  read_prefix : String,
 ) -> Unit {
   let (_, query) = split_query(request.path)
   let q = match query_param(query, "q") {
@@ -1276,6 +1473,9 @@ async fn search_docs(
   }
   let hits : Array[String] = []
   for slug in storage.list() {
+    if !allowed_read_prefix(read_prefix, slug) {
+      continue
+    }
     match storage.read(slug) {
       Some(content) =>
         if slug.contains(q) || content.contains(q) {

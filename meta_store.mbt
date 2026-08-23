@@ -86,6 +86,9 @@ pub struct ApiKeyRecord {
   name : String
   key_hash : String
   scopes : String
+  user_id : Int
+  read_prefix : String
+  write_prefix : String
   mut enabled : Bool
   created_at : String
 }
@@ -95,6 +98,9 @@ pub struct ApiKeyInfo {
   id : Int
   name : String
   scopes : String
+  user_id : Int
+  read_prefix : String
+  write_prefix : String
   enabled : Bool
   created_at : String
 }
@@ -138,6 +144,9 @@ async fn JsonMeta::load_api_keys(self : JsonMeta) -> Array[ApiKeyRecord] {
           name: json_str(o, "name"),
           key_hash: json_str(o, "key_hash"),
           scopes: json_str(o, "scopes"),
+          user_id: json_int(o, "user_id"),
+          read_prefix: json_str(o, "read_prefix"),
+          write_prefix: json_str(o, "write_prefix"),
           enabled: json_bool(o, "enabled"),
           created_at: json_str(o, "created_at"),
         })
@@ -159,6 +168,9 @@ async fn JsonMeta::save_api_keys(
       "name": Json::string(k.name),
       "key_hash": Json::string(k.key_hash),
       "scopes": Json::string(k.scopes),
+      "user_id": Json::number(k.user_id.to_double()),
+      "read_prefix": Json::string(k.read_prefix),
+      "write_prefix": Json::string(k.write_prefix),
       "enabled": Json::boolean(k.enabled),
       "created_at": Json::string(k.created_at),
     }
@@ -174,7 +186,7 @@ async fn JsonMeta::save_api_keys(
 pub struct UserRecord {
   id : Int
   username : String
-  password_hash : String
+  mut password_hash : String
   mut role : String
   mut enabled : Bool
   mut write_prefix : String
@@ -225,6 +237,19 @@ async fn JsonMeta::save_users(
   let tmp = self.users_path() + ".tmp"
   @fs.write_file(tmp, Json::array(items).stringify(indent=2))
   @fs.rename(tmp, self.users_path(), replace=true)
+}
+
+///|
+pub async fn JsonMeta::find_user_by_id(
+  self : JsonMeta,
+  id : Int,
+) -> UserRecord? {
+  for user in self.load_users() {
+    if user.id == id && user.enabled {
+      return Some(user)
+    }
+  }
+  None
 }
 
 ///|
@@ -280,6 +305,26 @@ pub async fn JsonMeta::create_user(
 }
 
 ///|
+pub async fn JsonMeta::reset_user_password(
+  self : JsonMeta,
+  id : Int,
+  password : String,
+) -> Bool {
+  let users = self.load_users()
+  let mut found = false
+  for i in 0..<users.length() {
+    if users[i].id == id {
+      users[i].password_hash = hash_api_key(password)
+      found = true
+    }
+  }
+  if found {
+    self.save_users(users)
+  }
+  found
+}
+
+///|
 pub async fn JsonMeta::update_user(
   self : JsonMeta,
   id : Int,
@@ -324,6 +369,9 @@ pub async fn JsonMeta::create_api_key(
   self : JsonMeta,
   name : String,
   scopes : String,
+  user_id : Int,
+  read_prefix : String,
+  write_prefix : String,
 ) -> String {
   let keys = self.load_api_keys()
   let next_id = keys.fold(init=0, fn(acc, k) {
@@ -340,6 +388,9 @@ pub async fn JsonMeta::create_api_key(
     name,
     key_hash: hash_api_key(plain),
     scopes,
+    user_id,
+    read_prefix,
+    write_prefix,
     enabled: true,
     created_at: "",
   }
@@ -349,12 +400,15 @@ pub async fn JsonMeta::create_api_key(
 }
 
 ///|
-/// 校验 API key：key 有效且启用时返回 scopes，否则 None
-pub async fn JsonMeta::verify_api_key(self : JsonMeta, key : String) -> String? {
+/// 校验 API key：有效时返回完整绑定记录。
+pub async fn JsonMeta::verify_api_key(
+  self : JsonMeta,
+  key : String,
+) -> ApiKeyRecord? {
   let hash = hash_api_key(key)
   for record in self.load_api_keys() {
     if record.key_hash == hash && record.enabled {
-      return Some(record.scopes)
+      return Some(record)
     }
   }
   None
@@ -369,6 +423,9 @@ pub async fn JsonMeta::list_api_keys(self : JsonMeta) -> Array[ApiKeyInfo] {
       id: r.id,
       name: r.name,
       scopes: r.scopes,
+      user_id: r.user_id,
+      read_prefix: r.read_prefix,
+      write_prefix: r.write_prefix,
       enabled: r.enabled,
       created_at: r.created_at,
     })
