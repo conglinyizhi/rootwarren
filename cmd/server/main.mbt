@@ -2,7 +2,10 @@
 async fn main {
   let storage = @lib.LocalStorage::new("content")
   let meta = @lib.JsonMeta::open("meta")
+  // 先加载 .env（shell 环境变量优先），再读取配置
   let env = @env.get_env_vars()
+  load_dotenv(env)
+  let port = parse_port(env)
   let admin_user = match meta.get_config("auth.admin_username") {
     Some(v) if !v.is_empty() => v
     _ => "operator"
@@ -206,7 +209,7 @@ async fn main {
     })
   })
 
-  let server = @rserver.Server(api=api, port=8080, component=@app.app)
+  let server = @rserver.Server(api=api, port=port, component=@app.app)
   server.run_forever()
 }
 
@@ -272,4 +275,32 @@ fn default_site() -> SiteConfig {
 ///|
 fn default_or(value : String, fallback : String) -> String {
   if value.is_empty() { fallback } else { value }
+}
+
+///|
+/// 读取 .env 文件并填入 env 表（不覆盖已有环境变量）。
+async fn load_dotenv(env : Map[String, String]) -> Unit {
+  if !@fs.exists(".env") {
+    return
+  }
+  let content = @utf8.decode_lossy(@fs.read_file(".env").binary()[:])
+  for line in content.split("\n") {
+    let line = line.trim()
+    if !line.is_empty() && !line.has_prefix("#") {
+      match line.find("=") {
+        Some(i) if !env.contains(line[:i].trim().to_owned()) =>
+          env[line[:i].trim().to_owned()] = line[i + 1:].trim().to_owned()
+        _ => ()
+      }
+    }
+  }
+}
+
+///|
+/// 读取监听端口：优先环境变量 PORT，默认 8080。
+fn parse_port(env : Map[String, String]) -> UInt16 {
+  match env.get("PORT") {
+    Some(v) => @string.parse_uint(v).to_uint16() catch { _ => 8080 }
+    None => 8080
+  }
 }
