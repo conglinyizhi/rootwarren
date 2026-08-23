@@ -230,16 +230,21 @@ async fn JsonMeta::load_categories(self : JsonMeta) -> Array[CategoryRecord] {
 }
 
 ///|
-async fn JsonMeta::save_categories(self : JsonMeta, categories : Array[CategoryRecord]) -> Unit {
+async fn JsonMeta::save_categories(
+  self : JsonMeta,
+  categories : Array[CategoryRecord],
+) -> Unit {
   let items : Array[Json] = []
   for c in categories {
-    items.push(Json::object({
-      "id": Json::number(c.id.to_double()),
-      "name": Json::string(c.name),
-      "slug": Json::string(c.slug),
-      "parent_id": Json::number(c.parent_id.to_double()),
-      "description": Json::string(c.description),
-    }))
+    items.push(
+      Json::object({
+        "id": Json::number(c.id.to_double()),
+        "name": Json::string(c.name),
+        "slug": Json::string(c.slug),
+        "parent_id": Json::number(c.parent_id.to_double()),
+        "description": Json::string(c.description),
+      }),
+    )
   }
   let tmp = self.categories_path() + ".tmp"
   @fs.write_file(tmp, Json::array(items).stringify(indent=2))
@@ -247,7 +252,9 @@ async fn JsonMeta::save_categories(self : JsonMeta, categories : Array[CategoryR
 }
 
 ///|
-pub async fn JsonMeta::list_categories(self : JsonMeta) -> Array[CategoryRecord] {
+pub async fn JsonMeta::list_categories(
+  self : JsonMeta,
+) -> Array[CategoryRecord] {
   self.load_categories()
 }
 
@@ -266,8 +273,12 @@ pub async fn JsonMeta::create_category(
     }
   }
   let next_id = categories.fold(init=0, fn(max_id, c) {
-    if c.id > max_id { c.id } else { max_id }
-  }) +
+      if c.id > max_id {
+        c.id
+      } else {
+        max_id
+      }
+    }) +
     1
   categories.push({ id: next_id, name, slug, parent_id, description })
   self.save_categories(categories)

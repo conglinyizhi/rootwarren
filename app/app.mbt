@@ -9,8 +9,29 @@
 using @rabbita {type Val, type Html, type Cmd, type Emit}
 
 ///|
-using @html {body, button, div, h1, h2, h3, h4, head, html, input, label, li, link, option, p, section, select, span, textarea, title, ul}
-
+using @html {
+  body,
+  button,
+  div,
+  h1,
+  h2,
+  h3,
+  h4,
+  head,
+  html,
+  input,
+  label,
+  li,
+  link,
+  option,
+  p,
+  section,
+  select,
+  span,
+  textarea,
+  title,
+  ul,
+}
 
 ///|
 pub enum Msg {
@@ -51,6 +72,8 @@ pub enum Msg {
   KeyCreated(Result[String, Error])
   // 分类管理
   AdminCategoriesLoaded(Result[String, Error])
+  // 主题切换（system/light/dark），只存浏览器
+  SetTheme(String)
 }
 
 ///|
@@ -81,9 +104,11 @@ pub struct Model {
   categories : Array[String]
   active_category : String
   active_status : String
+  theme : String
 } derive(Eq)
 
 ///|
+
 ///|
 /// 登录请求体（ToJson 需要显式 record 类型）。
 pub struct LoginPayload {
@@ -137,6 +162,7 @@ pub fn initial_model() -> Model {
     categories: [],
     active_category: "",
     active_status: "",
+    theme: "system",
   }
 }
 
@@ -160,10 +186,11 @@ fn parse_slugs(raw : String) -> Array[String] {
 fn parse_html(raw : String) -> String {
   let json = @json.parse(raw) catch { _ => return "" }
   match json {
-    Json::Object(map) => match map.get("html") {
-      Some(Json::String(html)) => html
-      _ => ""
-    }
+    Json::Object(map) =>
+      match map.get("html") {
+        Some(Json::String(html)) => html
+        _ => ""
+      }
     _ => ""
   }
 }
@@ -172,10 +199,11 @@ fn parse_html(raw : String) -> String {
 fn parse_title(raw : String) -> String {
   let json = @json.parse(raw) catch { _ => return "mbt-mdwiki" }
   match json {
-    Json::Object(map) => match map.get("title") {
-      Some(Json::String(title)) => title
-      _ => "mbt-mdwiki"
-    }
+    Json::Object(map) =>
+      match map.get("title") {
+        Some(Json::String(title)) => title
+        _ => "mbt-mdwiki"
+      }
     _ => "mbt-mdwiki"
   }
 }
@@ -205,10 +233,11 @@ fn parse_users(raw : String) -> Array[String] {
 fn parse_site_title(raw : String) -> String {
   let json = @json.parse(raw) catch { _ => return "mbt-mdwiki" }
   match json {
-    Json::Object(map) => match map.get("title") {
-      Some(Json::String(title)) => title
-      _ => "mbt-mdwiki"
-    }
+    Json::Object(map) =>
+      match map.get("title") {
+        Some(Json::String(title)) => title
+        _ => "mbt-mdwiki"
+      }
     _ => "mbt-mdwiki"
   }
 }
@@ -238,10 +267,11 @@ fn parse_keys(raw : String) -> Array[String] {
 fn extract_key(raw : String) -> String {
   let json = @json.parse(raw) catch { _ => return "" }
   match json {
-    Json::Object(map) => match map.get("key") {
-      Some(Json::String(k)) => k
-      _ => ""
-    }
+    Json::Object(map) =>
+      match map.get("key") {
+        Some(Json::String(k)) => k
+        _ => ""
+      }
     _ => ""
   }
 }
@@ -271,12 +301,32 @@ fn parse_categories(raw : String) -> Array[String] {
 fn parse_field(raw : String, field : String) -> String {
   let json = @json.parse(raw) catch { _ => return "" }
   match json {
-    Json::Object(map) => match map.get(field) {
-      Some(Json::String(v)) => v
-      _ => ""
-    }
+    Json::Object(map) =>
+      match map.get(field) {
+        Some(Json::String(v)) => v
+        _ => ""
+      }
     _ => ""
   }
+}
+
+///|
+fn inline_script(js : String) -> Html {
+  @html.node("script", @html.Attrs::build().inner_html(js), @html.nothing)
+}
+
+// 防闪烁：CSS 解析前按浏览器存储设定 data-theme
+
+///|
+fn theme_init_js() -> String {
+  "<script>(function(){try{var t=localStorage.getItem('mbt-theme');if(t==='light'||t==='dark'){document.documentElement.dataset.theme=t}}catch(e){}})()</script>"
+}
+
+// 持久化：监听 html[data-theme] 变化写回浏览器存储
+
+///|
+fn theme_persist_js() -> String {
+  "<script>(function(){var e=document.documentElement;var w=function(){try{var t=e.dataset.theme;if(t==='light'||t==='dark'){localStorage.setItem('mbt-theme',t)}else{localStorage.removeItem('mbt-theme')}}catch(x){}};try{new MutationObserver(w).observe(e,{attributes:true,attributeFilter:['data-theme']})}catch(x){};w()})()</script>"
 }
 
 ///|
@@ -286,52 +336,82 @@ pub fn update(model : Model, msg : Msg, emit : Emit[Msg]) -> (Model, Cmd) {
       (
         { ..model, busy: true, status: "正在加载文档……" },
         @rabbita.batch([
-          @http.get("/api/v1/docs").expect_text(emit.map(result => DocsLoaded(result))),
-          @http.get("/api/v1/config").expect_text(emit.map(result => ConfigLoaded(match result {
-            Ok(raw) => parse_title(raw)
-            Err(_) => "mbt-mdwiki"
-          }))),
-          @http.get("/api/auth/me").expect_text(emit.map(result => MeLoaded(match result {
-            Ok(_) => "authed"
-            Err(_) => "anon"
-          }))),
+          @http.get("/api/v1/docs").expect_text(
+            emit.map(result => DocsLoaded(result)),
+          ),
+          @http.get("/api/v1/config").expect_text(
+            emit.map(result => {
+              ConfigLoaded(
+                match result {
+                  Ok(raw) => parse_title(raw)
+                  Err(_) => "mbt-mdwiki"
+                },
+              )
+            }),
+          ),
+          @http.get("/api/auth/me").expect_text(
+            emit.map(result => {
+              MeLoaded(
+                match result {
+                  Ok(_) => "authed"
+                  Err(_) => "anon"
+                },
+              )
+            }),
+          ),
         ]),
       )
     SelectDoc(slug) =>
       (
-        { ..model, busy: true, status: "正在打开 " + slug + "……", editing: false },
-        @http.get("/api/v1/docs/" + slug).expect_text(emit.map(result => DocLoaded(slug, result))),
+        {
+          ..model,
+          busy: true,
+          status: "正在打开 " + slug + "……",
+          editing: false,
+        },
+        @http.get("/api/v1/docs/" + slug).expect_text(
+          emit.map(result => DocLoaded(slug, result)),
+        ),
       )
-    SetQuery(query) => ({ ..model, query }, @rabbita.none)
+    SetQuery(query) => ({ ..model, query, }, @rabbita.none)
     SetLoginUser(u) => ({ ..model, login_user: u }, @rabbita.none)
     SetLoginPass(p) => ({ ..model, login_pass: p }, @rabbita.none)
     Login =>
       (
         { ..model, busy: true, status: "正在登录……" },
-        @http.post("/api/auth/login").with_json(LoginPayload::{
+        @http.post("/api/auth/login")
+        .with_json(LoginPayload::{
           username: model.login_user,
           password: model.login_pass,
-        }).expect_text(emit.map(result => LoginDone(result))),
+        })
+        .expect_text(emit.map(result => LoginDone(result))),
       )
     Logout =>
       (
         { ..model, busy: true, status: "正在退出……" },
-        @http.post("/api/auth/logout").expect_text(emit.map(_result => MeLoaded("anon"))),
+        @http.post("/api/auth/logout").expect_text(
+          emit.map(_result => MeLoaded("anon")),
+        ),
       )
-    Edit => ({ ..model, editing: true, content: model.active_html }, @rabbita.none)
-    SetContent(content) => ({ ..model, content }, @rabbita.none)
+    Edit =>
+      ({ ..model, editing: true, content: model.active_html }, @rabbita.none)
+    SetContent(content) => ({ ..model, content, }, @rabbita.none)
     SetSlug(slug) => ({ ..model, slug_input: slug }, @rabbita.none)
     Save =>
       (
         { ..model, busy: true, status: "正在保存……" },
-        @http.put("/api/v1/docs/" + model.active_slug).with_text(model.content).expect_text(emit.map(result => SaveDone(result))),
+        @http.put("/api/v1/docs/" + model.active_slug)
+        .with_text(model.content)
+        .expect_text(emit.map(result => SaveDone(result))),
       )
     Delete =>
       (
         { ..model, busy: true, status: "正在删除……" },
-        @http.delete("/api/v1/docs/" + model.active_slug).expect_text(emit.map(result => DeleteDone(result))),
+        @http.delete("/api/v1/docs/" + model.active_slug).expect_text(
+          emit.map(result => DeleteDone(result)),
+        ),
       )
-    ConfigLoaded(title) => ({ ..model, title }, @rabbita.none)
+    ConfigLoaded(title) => ({ ..model, title, }, @rabbita.none)
     DocsLoaded(result) =>
       (
         {
@@ -417,15 +497,29 @@ pub fn update(model : Model, msg : Msg, emit : Emit[Msg]) -> (Model, Cmd) {
       )
     ShowAdmin =>
       (
-        { ..model, admin_view: true, busy: true, status: "正在加载后台数据……" },
+        {
+          ..model,
+          admin_view: true,
+          busy: true,
+          status: "正在加载后台数据……",
+        },
         @rabbita.batch([
-          @http.get("/api/admin/users").expect_text(emit.map(result => AdminUsersLoaded(result))),
-          @http.get("/api/admin/site").expect_text(emit.map(result => AdminSiteLoaded(result))),
-          @http.get("/api/admin/keys").expect_text(emit.map(result => AdminKeysLoaded(result))),
-          @http.get("/api/v1/categories").expect_text(emit.map(result => AdminCategoriesLoaded(result))),
+          @http.get("/api/admin/users").expect_text(
+            emit.map(result => AdminUsersLoaded(result)),
+          ),
+          @http.get("/api/admin/site").expect_text(
+            emit.map(result => AdminSiteLoaded(result)),
+          ),
+          @http.get("/api/admin/keys").expect_text(
+            emit.map(result => AdminKeysLoaded(result)),
+          ),
+          @http.get("/api/v1/categories").expect_text(
+            emit.map(result => AdminCategoriesLoaded(result)),
+          ),
         ]),
       )
     HideAdmin => ({ ..model, admin_view: false }, @rabbita.none)
+    SetTheme(t) => ({ ..model, theme: t }, @rabbita.none)
     AdminUsersLoaded(result) =>
       (
         {
@@ -457,13 +551,15 @@ pub fn update(model : Model, msg : Msg, emit : Emit[Msg]) -> (Model, Cmd) {
     SaveSite =>
       (
         { ..model, busy: true, status: "正在保存站点设置……" },
-        @http.post("/api/admin/site").with_json(SitePayload::{
+        @http.post("/api/admin/site")
+        .with_json(SitePayload::{
           title: model.site_title_input,
           public: "true",
           show_tree: "true",
           llms_mode: "public",
           llms_prefixes: "",
-        }).expect_text(emit.map(result => SiteSaved(result))),
+        })
+        .expect_text(emit.map(result => SiteSaved(result))),
       )
     SiteSaved(result) =>
       (
@@ -509,12 +605,14 @@ pub fn update(model : Model, msg : Msg, emit : Emit[Msg]) -> (Model, Cmd) {
     CreateKey =>
       (
         { ..model, busy: true, status: "正在创建 API key……" },
-        @http.post("/api/admin/keys").with_json(KeyPayload::{
+        @http.post("/api/admin/keys")
+        .with_json(KeyPayload::{
           name: model.key_name,
           scopes: model.key_scopes,
           read_prefix: model.key_read_prefix,
           write_prefix: model.key_write_prefix,
-        }).expect_text(emit.map(result => KeyCreated(result))),
+        })
+        .expect_text(emit.map(result => KeyCreated(result))),
       )
     KeyCreated(result) =>
       (
@@ -545,36 +643,90 @@ pub fn app() -> Val[Html] {
         slug,
       )
     })
+    let theme_switch = div(class="theme-switch", [
+      button(
+        class=if model.theme == "system" { "active" } else { "" },
+        on_click=emit(SetTheme("system")),
+        attrs=@html.Attrs::build().data_set("name", "theme-system"),
+        "系统",
+      ),
+      button(
+        class=if model.theme == "light" { "active" } else { "" },
+        on_click=emit(SetTheme("light")),
+        attrs=@html.Attrs::build().data_set("name", "theme-light"),
+        "浅色",
+      ),
+      button(
+        class=if model.theme == "dark" { "active" } else { "" },
+        on_click=emit(SetTheme("dark")),
+        attrs=@html.Attrs::build().data_set("name", "theme-dark"),
+        "深色",
+      ),
+    ])
     let auth_ui = if model.authed {
       div(class="auth-bar", [
         span("已登录"),
-        button(on_click=emit(ShowAdmin), attrs=@html.Attrs::build().data_set("name", "admin-button"), "管理"),
-        button(on_click=emit(Logout), attrs=@html.Attrs::build().data_set("name", "logout-button"), "退出"),
+        button(
+          on_click=emit(ShowAdmin),
+          attrs=@html.Attrs::build().data_set("name", "admin-button"),
+          "管理",
+        ),
+        button(
+          on_click=emit(Logout),
+          attrs=@html.Attrs::build().data_set("name", "logout-button"),
+          "退出",
+        ),
       ])
     } else {
       div(class="auth-bar", [
-        input(placeholder="用户名", value=model.login_user, on_input=text => emit(SetLoginUser(text)), attrs=@html.Attrs::build().data_set("name", "login-user")),
-        input(input_type=@html.Password, placeholder="密码", value=model.login_pass, on_input=text => emit(SetLoginPass(text)), attrs=@html.Attrs::build().data_set("name", "login-pass")),
-        button(on_click=emit(Login), attrs=@html.Attrs::build().data_set("name", "login-button"), "登录"),
+        input(
+          placeholder="用户名",
+          value=model.login_user,
+          on_input=text => emit(SetLoginUser(text)),
+          attrs=@html.Attrs::build().data_set("name", "login-user"),
+        ),
+        input(
+          input_type=@html.Password,
+          placeholder="密码",
+          value=model.login_pass,
+          on_input=text => emit(SetLoginPass(text)),
+          attrs=@html.Attrs::build().data_set("name", "login-pass"),
+        ),
+        button(
+          on_click=emit(Login),
+          attrs=@html.Attrs::build().data_set("name", "login-button"),
+          "登录",
+        ),
       ])
     }
     let admin_panel = div(class="admin-panel", [
       div(class="admin-header", [
         h2("后台管理"),
-        button(on_click=emit(HideAdmin), attrs=@html.Attrs::build().data_set("name", "admin-back-button"), "返回文档站"),
+        button(
+          on_click=emit(HideAdmin),
+          attrs=@html.Attrs::build().data_set("name", "admin-back-button"),
+          "返回文档站",
+        ),
       ]),
       section(class="admin-section", [
         h3("用户列表"),
-        ul(
-          model.users.map(fn(u) { li(u) }),
-        ),
+        ul(model.users.map(fn(u) { li(u) })),
       ]),
       section(class="admin-section", [
         h3("站点设置"),
         label(for_="site-title", "产品名"),
         div(class="field", [
-          input(id="site-title", value=model.site_title_input, on_input=text => emit(SetSiteTitle(text)), attrs=@html.Attrs::build().data_set("name", "site-title-input")),
-          button(on_click=emit(SaveSite), attrs=@html.Attrs::build().data_set("name", "save-site-button"), "保存站点设置"),
+          input(
+            id="site-title",
+            value=model.site_title_input,
+            on_input=text => emit(SetSiteTitle(text)),
+            attrs=@html.Attrs::build().data_set("name", "site-title-input"),
+          ),
+          button(
+            on_click=emit(SaveSite),
+            attrs=@html.Attrs::build().data_set("name", "save-site-button"),
+            "保存站点设置",
+          ),
         ]),
       ]),
       section(class="admin-section", [
@@ -583,64 +735,141 @@ pub fn app() -> Val[Html] {
         h4("创建密钥"),
         label(for_="key-name", "名称"),
         div(class="field", [
-          input(id="key-name", value=model.key_name, on_input=text => emit(SetKeyName(text)), attrs=@html.Attrs::build().data_set("name", "key-name-input")),
+          input(
+            id="key-name",
+            value=model.key_name,
+            on_input=text => emit(SetKeyName(text)),
+            attrs=@html.Attrs::build().data_set("name", "key-name-input"),
+          ),
         ]),
         label(for_="key-scopes", "权限"),
         div(class="field", [
-          select(id="key-scopes", on_change=v => emit(SetKeyScopes(v)), attrs=@html.Attrs::build().data_set("name", "key-scopes-select"), [
-            option(value="read", selected=model.key_scopes == "read", "只读"),
-            option(value="read,write", selected=model.key_scopes == "read,write", "读写"),
-          ]),
+          select(
+            id="key-scopes",
+            on_change=v => emit(SetKeyScopes(v)),
+            attrs=@html.Attrs::build().data_set("name", "key-scopes-select"),
+            [
+              option(
+                value="read",
+                selected=model.key_scopes == "read",
+                "只读",
+              ),
+              option(
+                value="read,write",
+                selected=model.key_scopes == "read,write",
+                "读写",
+              ),
+            ],
+          ),
         ]),
         label(for_="key-read-prefix", "可读前缀"),
         div(class="field", [
-          input(id="key-read-prefix", value=model.key_read_prefix, on_input=text => emit(SetKeyReadPrefix(text)), attrs=@html.Attrs::build().data_set("name", "key-read-prefix-input")),
+          input(
+            id="key-read-prefix",
+            value=model.key_read_prefix,
+            on_input=text => emit(SetKeyReadPrefix(text)),
+            attrs=@html.Attrs::build().data_set("name", "key-read-prefix-input"),
+          ),
         ]),
         label(for_="key-write-prefix", "可写前缀"),
         div(class="field", [
-          input(id="key-write-prefix", value=model.key_write_prefix, on_input=text => emit(SetKeyWritePrefix(text)), attrs=@html.Attrs::build().data_set("name", "key-write-prefix-input")),
+          input(
+            id="key-write-prefix",
+            value=model.key_write_prefix,
+            on_input=text => emit(SetKeyWritePrefix(text)),
+            attrs=@html.Attrs::build().data_set(
+              "name", "key-write-prefix-input",
+            ),
+          ),
         ]),
-        button(on_click=emit(CreateKey), attrs=@html.Attrs::build().data_set("name", "create-key-button"), "创建密钥"),
+        button(
+          on_click=emit(CreateKey),
+          attrs=@html.Attrs::build().data_set("name", "create-key-button"),
+          "创建密钥",
+        ),
       ]),
       section(class="admin-section", [
         h3("分类"),
         ul(model.categories.map(fn(c) { li(c) })),
-        p("在文档 front matter 的 category 字段填入分类 slug 即可归入。"),
+        p(
+          "在文档 front matter 的 category 字段填入分类 slug 即可归入。",
+        ),
       ]),
     ])
     let editor = if model.editing {
       div(class="editor", [
-        textarea(rows=20, placeholder="Markdown 正文", value=model.content, on_input=text => emit(SetContent(text)), attrs=@html.Attrs::build().data_set("name", "markdown-editor"), @html.nothing),
+        textarea(
+          rows=20,
+          placeholder="Markdown 正文",
+          value=model.content,
+          on_input=text => emit(SetContent(text)),
+          attrs=@html.Attrs::build().data_set("name", "markdown-editor"),
+          @html.nothing,
+        ),
         div(class="editor-actions", [
-          button(on_click=emit(Save), attrs=@html.Attrs::build().data_set("name", "save-button"), "保存"),
-          button(on_click=emit(Delete), attrs=@html.Attrs::build().data_set("name", "delete-button"), "删除"),
+          button(
+            on_click=emit(Save),
+            attrs=@html.Attrs::build().data_set("name", "save-button"),
+            "保存",
+          ),
+          button(
+            on_click=emit(Delete),
+            attrs=@html.Attrs::build().data_set("name", "delete-button"),
+            "删除",
+          ),
         ]),
       ])
     } else {
       div(class="readonly", [
         div(class="meta-bar", [
-          (if model.active_category.is_empty() { @html.nothing } else { span(class="badge", "分类：" + model.active_category) }),
-          (if model.active_status.is_empty() || model.active_status == "public" { @html.nothing } else { span(class="badge", "状态：" + model.active_status) }),
+          if model.active_category.is_empty() {
+            @html.nothing
+          } else {
+            span(class="badge", "分类：" + model.active_category)
+          },
+          if model.active_status.is_empty() || model.active_status == "public" {
+            @html.nothing
+          } else {
+            span(class="badge", "状态：" + model.active_status)
+          },
         ]),
-        div(attrs=@html.Attrs::build().data_set("name", "document-content").inner_html(model.active_html), @html.nothing),
-        button(on_click=emit(Edit), attrs=@html.Attrs::build().data_set("name", "edit-button"), "编辑"),
+        div(
+          attrs=@html.Attrs::build()
+            .data_set("name", "document-content")
+            .inner_html(model.active_html),
+          @html.nothing,
+        ),
+        button(
+          on_click=emit(Edit),
+          attrs=@html.Attrs::build().data_set("name", "edit-button"),
+          "编辑",
+        ),
       ])
     }
-    let active_title = if model.active_slug.is_empty() { "阅读文档" } else { model.active_slug }
+    let active_title = if model.active_slug.is_empty() {
+      "阅读文档"
+    } else {
+      model.active_slug
+    }
     let workspace_view = div(class="workspace", [
       div(class="sidebar", [
         h2("文档导航"),
         p(model.slugs.length().to_string() + " 篇文档"),
-        div(attrs=@html.Attrs::build().data_set("name", "document-list"), doc_buttons),
+        div(
+          attrs=@html.Attrs::build().data_set("name", "document-list"),
+          doc_buttons,
+        ),
       ]),
-      div(class="editor-panel", [
-        h2(active_title),
-        editor,
-      ]),
+      div(class="editor-panel", [h2(active_title), editor]),
     ])
-    let content_area = if model.admin_view { admin_panel } else { workspace_view }
-    html <| [
+    let content_area = if model.admin_view {
+      admin_panel
+    } else {
+      workspace_view
+    }
+    html(attrs=@html.Attrs::build().data_set("theme", model.theme), [
       head([
+        inline_script(theme_init_js()),
         link(rel="stylesheet", href="/site.css"),
         title(model.title),
       ]),
@@ -648,14 +877,31 @@ pub fn app() -> Val[Html] {
         div(class="reading-shell") <| [
           div(class="topbar", [
             h1(model.title + " 文档站"),
-            button(class="button", on_click=emit(LoadDocs), attrs=@html.Attrs::build().data_set("name", "load-documents-button"), "加载文档"),
-            input(input_type=@html.InputType::Search, placeholder="搜索文档", value=model.query, on_input=text => emit(SetQuery(text)), attrs=@html.Attrs::build().data_set("name", "search-input")),
+            div(class="controls", [
+              button(
+                class="button",
+                on_click=emit(LoadDocs),
+                attrs=@html.Attrs::build().data_set(
+                  "name", "load-documents-button",
+                ),
+                "加载文档",
+              ),
+              input(
+                input_type=@html.InputType::Search,
+                placeholder="搜索文档",
+                value=model.query,
+                on_input=text => emit(SetQuery(text)),
+                attrs=@html.Attrs::build().data_set("name", "search-input"),
+              ),
+              theme_switch,
+            ]),
           ]),
           auth_ui,
           p(model.status),
           content_area,
         ],
+        inline_script(theme_persist_js()),
       ],
-    ]
+    ])
   })
 }

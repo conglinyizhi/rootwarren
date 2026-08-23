@@ -17,7 +17,9 @@ pub fn AuthState::new(
   admin_username : String,
   admin_key_hash : String,
 ) -> AuthState {
-  let secret = @lib.generate_session_secret() catch { _ => "insecure-fallback-secret" }
+  let secret = @lib.generate_session_secret() catch {
+    _ => "insecure-fallback-secret"
+  }
   {
     secret,
     provider: @lib.AdminTokenProvider::from_hash(admin_username, admin_key_hash),
@@ -35,7 +37,11 @@ pub fn request_token(req : @moonback.Request) -> String? {
       let raw = raw.to_owned()
       if raw.has_prefix("Bearer ") {
         let token = raw["Bearer ".length():].to_owned()
-        if token.is_empty() { None } else { Some(token) }
+        if token.is_empty() {
+          None
+        } else {
+          Some(token)
+        }
       } else {
         None
       }
@@ -62,7 +68,10 @@ pub fn AuthState::subject_for(self : AuthState, token : String) -> String? {
 
 ///|
 /// 已登录且非撤销的 subject（用于权限判断）。
-pub fn AuthState::authenticate(self : AuthState, req : @moonback.Request) -> String? {
+pub fn AuthState::authenticate(
+  self : AuthState,
+  req : @moonback.Request,
+) -> String? {
   match request_token(req) {
     Some(token) => self.subject_for(token)
     None => None
@@ -76,7 +85,13 @@ pub fn AuthState::can_edit(self : AuthState, req : @moonback.Request) -> Bool {
     Some(subject) if subject == "admin" => true
     Some(subject) =>
       match self.subjects.get(subject) {
-        Some(user) => user.enabled && (user.role == "write" || user.role == "admin" || user.role == "superadmin")
+        Some(user) =>
+          user.enabled &&
+          (
+            user.role == "write" ||
+            user.role == "admin" ||
+            user.role == "superadmin"
+          )
         None => false
       }
     None => false
@@ -89,7 +104,8 @@ pub fn AuthState::is_admin(self : AuthState, req : @moonback.Request) -> Bool {
     Some(subject) if subject == "admin" => true
     Some(subject) =>
       match self.subjects.get(subject) {
-        Some(user) => user.enabled && (user.role == "admin" || user.role == "superadmin")
+        Some(user) =>
+          user.enabled && (user.role == "admin" || user.role == "superadmin")
         None => false
       }
     None => false
@@ -98,7 +114,10 @@ pub fn AuthState::is_admin(self : AuthState, req : @moonback.Request) -> Bool {
 
 ///|
 /// 当前请求用户的角色（内置 admin 视为 superadmin；未登录为 none）。
-pub fn AuthState::session_role(self : AuthState, req : @moonback.Request) -> String {
+pub fn AuthState::session_role(
+  self : AuthState,
+  req : @moonback.Request,
+) -> String {
   match self.authenticate(req) {
     Some(subject) if subject == "admin" => "superadmin"
     Some(subject) =>
@@ -118,7 +137,11 @@ pub fn can_manage_role(actor : String, target : String) -> Bool {
 
 ///|
 pub fn valid_user_role(value : String) -> Bool {
-  value == "superadmin" || value == "admin" || value == "none" || value == "read" || value == "write"
+  value == "superadmin" ||
+  value == "admin" ||
+  value == "none" ||
+  value == "read" ||
+  value == "write"
 }
 
 ///|
@@ -156,7 +179,10 @@ pub async fn AuthState::docs_auth(
                   scopes = "read"
                 }
                 if !user.write_prefix.is_empty() {
-                  write_prefix = intersect_prefix(write_prefix, user.write_prefix)
+                  write_prefix = intersect_prefix(
+                    write_prefix,
+                    user.write_prefix,
+                  )
                 }
               }
               None => scopes = ""
@@ -175,7 +201,9 @@ pub async fn AuthState::docs_auth(
     Some(subject) =>
       match self.subjects.get(subject) {
         Some(user) => {
-          let scopes = if user.role == "write" || user.role == "admin" || user.role == "superadmin" {
+          let scopes = if user.role == "write" ||
+            user.role == "admin" ||
+            user.role == "superadmin" {
             "read,write"
           } else {
             user.role
@@ -212,11 +240,17 @@ pub fn allowed_write_prefix(prefix : String, slug : String) -> Bool {
 ///|
 /// 求两个前缀的交集（取更具体的一个；无交集返回空）。
 fn intersect_prefix(a : String, b : String) -> String {
-  if a.is_empty() { b }
-  else if b.is_empty() { a }
-  else if a == b || a.has_prefix(b + "/") { a }
-  else if b.has_prefix(a + "/") { b }
-  else { "" }
+  if a.is_empty() {
+    b
+  } else if b.is_empty() {
+    a
+  } else if a == b || a.has_prefix(b + "/") {
+    a
+  } else if b.has_prefix(a + "/") {
+    b
+  } else {
+    ""
+  }
 }
 
 ///|
@@ -236,7 +270,10 @@ pub fn AuthState::admin_login(
 
 ///|
 /// 登记一个已验证的普通用户并签发 token。返回 token?
-pub fn AuthState::register_user(self : AuthState, user : @lib.UserRecord) -> String? {
+pub fn AuthState::register_user(
+  self : AuthState,
+  user : @lib.UserRecord,
+) -> String? {
   if !user.enabled || user.role == "none" {
     return None
   }
@@ -257,5 +294,3 @@ pub fn AuthState::logout(self : AuthState, req : @moonback.Request) -> Unit {
     None => ()
   }
 }
-
-

@@ -22,9 +22,7 @@ async fn main {
   let api = @moonback.Module(ctx => {
     // 静态资源：rabbit page_service 会引用 /styles.css 与 /index.js
     ctx.add_middleware(@static.new(root="public"))
-    ctx.get("/health", (_req, res) => {
-      res.send_json({ "status": "ok" })
-    })
+    ctx.get("/health", (_req, res) => res.send_json({ "status": "ok" }))
 
     // 认证
     ctx.post("/api/auth/login", (req, res) => {
@@ -34,10 +32,11 @@ async fn main {
         Some((token, "admin"))
       } else {
         match meta.verify_user(username, password) {
-          Some(user) => match auth.register_user(user) {
-            Some(token) => Some((token, "user"))
-            None => None
-          }
+          Some(user) =>
+            match auth.register_user(user) {
+              Some(token) => Some((token, "user"))
+              None => None
+            }
           None => None
         }
       }
@@ -49,7 +48,11 @@ async fn main {
             headers=[("Set-Cookie", cookie)],
           )
         }
-        None => res.send_json({ "error": Json::string("invalid credentials") }, status=401)
+        None =>
+          res.send_json(
+            { "error": Json::string("invalid credentials") },
+            status=401,
+          )
       }
     })
     ctx.post("/api/auth/logout", (req, res) => {
@@ -59,7 +62,8 @@ async fn main {
     ctx.get("/api/auth/me", (req, res) => {
       match auth.authenticate(req) {
         Some(subject) => res.send_json({ "subject": Json::string(subject) })
-        None => res.send_json({ "error": Json::string("unauthorized") }, status=401)
+        None =>
+          res.send_json({ "error": Json::string("unauthorized") }, status=401)
       }
     })
 
@@ -136,14 +140,21 @@ async fn main {
         return
       }
       let body = req.body.text()
-      let json = @json.parse(body) catch { _ => { res.send_json({"error": Json::string("bad json")}, status=400); return } }
+      let json = @json.parse(body) catch {
+        _ => {
+          res.send_json({ "error": Json::string("bad json") }, status=400)
+          return
+        }
+      }
       let username = jv_string(json, "username")
       let password = jv_string(json, "password")
       let role = jv_string(json, "role")
       let prefix = jv_string(json, "write_prefix")
       let actor = auth.session_role(req)
-      if !can_manage_role(actor, role) || !valid_user_role(role) ||
-        username.length() < 3 || password.length() < 12 ||
+      if !can_manage_role(actor, role) ||
+        !valid_user_role(role) ||
+        username.length() < 3 ||
+        password.length() < 12 ||
         (!prefix.is_empty() && !@lib.valid_slug(prefix)) {
         res.send_json({ "error": Json::string("invalid account") }, status=400)
         return
@@ -160,19 +171,31 @@ async fn main {
         return
       }
       let body = req.body.text()
-      let json = @json.parse(body) catch { _ => { res.send_json({"error": Json::string("bad json")}, status=400); return } }
+      let json = @json.parse(body) catch {
+        _ => {
+          res.send_json({ "error": Json::string("bad json") }, status=400)
+          return
+        }
+      }
       let id = jv_int(json, "id")
       let role = jv_string(json, "role")
       let prefix = jv_string(json, "write_prefix")
       let enabled = jv_bool(json, "enabled")
       let mut target_role = "none"
       for user in meta.list_users() {
-        if user.id == id { target_role = user.role }
+        if user.id == id {
+          target_role = user.role
+        }
       }
       let actor = auth.session_role(req)
-      if !can_manage_role(actor, target_role) || !can_manage_role(actor, role) ||
-        !valid_user_role(role) || (!prefix.is_empty() && !@lib.valid_slug(prefix)) {
-        res.send_json({ "error": Json::string("no permission or invalid") }, status=403)
+      if !can_manage_role(actor, target_role) ||
+        !can_manage_role(actor, role) ||
+        !valid_user_role(role) ||
+        (!prefix.is_empty() && !@lib.valid_slug(prefix)) {
+        res.send_json(
+          { "error": Json::string("no permission or invalid") },
+          status=403,
+        )
         return
       }
       if meta.update_user(id, role, prefix, enabled) {
@@ -187,16 +210,26 @@ async fn main {
         return
       }
       let body = req.body.text()
-      let json = @json.parse(body) catch { _ => { res.send_json({"error": Json::string("bad json")}, status=400); return } }
+      let json = @json.parse(body) catch {
+        _ => {
+          res.send_json({ "error": Json::string("bad json") }, status=400)
+          return
+        }
+      }
       let id = jv_int(json, "id")
       let password = jv_string(json, "password")
       let mut target_role = "none"
       for user in meta.list_users() {
-        if user.id == id { target_role = user.role }
+        if user.id == id {
+          target_role = user.role
+        }
       }
       let actor = auth.session_role(req)
       if password.length() < 12 || !can_manage_role(actor, target_role) {
-        res.send_json({ "error": Json::string("no permission or short password") }, status=403)
+        res.send_json(
+          { "error": Json::string("no permission or short password") },
+          status=403,
+        )
         return
       }
       if meta.reset_user_password(id, password) {
@@ -229,18 +262,26 @@ async fn main {
         return
       }
       let body = req.body.text()
-      let json = @json.parse(body) catch { _ => { res.send_json({"error": Json::string("bad json")}, status=400); return } }
+      let json = @json.parse(body) catch {
+        _ => {
+          res.send_json({ "error": Json::string("bad json") }, status=400)
+          return
+        }
+      }
       let name = jv_string(json, "name")
       let scopes = jv_string(json, "scopes")
       let user_id = jv_int(json, "user_id")
       let read_prefix = jv_string(json, "read_prefix")
       let write_prefix = jv_string(json, "write_prefix")
-      if name.is_empty() || (!read_prefix.is_empty() && !@lib.valid_slug(read_prefix)) ||
+      if name.is_empty() ||
+        (!read_prefix.is_empty() && !@lib.valid_slug(read_prefix)) ||
         (!write_prefix.is_empty() && !@lib.valid_slug(write_prefix)) {
         res.send_json({ "error": Json::string("invalid key") }, status=400)
         return
       }
-      let plain = meta.create_api_key(name, scopes, user_id, read_prefix, write_prefix)
+      let plain = meta.create_api_key(
+        name, scopes, user_id, read_prefix, write_prefix,
+      )
       res.send_json({ "ok": Json::boolean(true), "key": Json::string(plain) })
     })
     ctx.post("/api/admin/keys/revoke", (req, res) => {
@@ -249,7 +290,12 @@ async fn main {
         return
       }
       let body = req.body.text()
-      let json = @json.parse(body) catch { _ => { res.send_json({"error": Json::string("bad json")}, status=400); return } }
+      let json = @json.parse(body) catch {
+        _ => {
+          res.send_json({ "error": Json::string("bad json") }, status=400)
+          return
+        }
+      }
       let id = jv_int(json, "id")
       meta.revoke_api_key(id)
       res.send_json({ "ok": Json::boolean(true) })
@@ -266,7 +312,9 @@ async fn main {
       }
     })
     ctx.get("/feed", (_req, res) => {
-      let w = res.respond(headers=[("Content-Type", "application/rss+xml; charset=utf-8")])
+      let w = res.respond(headers=[
+        ("Content-Type", "application/rss+xml; charset=utf-8"),
+      ])
       w.write(serve_rss(storage, meta))
     })
 
@@ -337,10 +385,15 @@ async fn main {
     ctx.get("/api/v1/docs", (req, res) => {
       let perm = auth.docs_auth(meta, req)
       if !can_read(perm.scopes) {
-        res.send_json({ "error": Json::string("read permission required") }, status=403)
+        res.send_json(
+          { "error": Json::string("read permission required") },
+          status=403,
+        )
         return
       }
-      let slugs = storage.list().filter(fn(slug) { allowed_read_prefix(perm.read_prefix, slug) })
+      let slugs = storage
+        .list()
+        .filter(fn(slug) { allowed_read_prefix(perm.read_prefix, slug) })
       let items = slugs.map(fn(slug) { Json::string(slug) })
       res.send_json({ "docs": Json::array(items) })
     })
@@ -354,11 +407,17 @@ async fn main {
         }
       }
       if !can_read(perm.scopes) {
-        res.send_json({ "error": Json::string("read permission required") }, status=403)
+        res.send_json(
+          { "error": Json::string("read permission required") },
+          status=403,
+        )
         return
       }
       if !allowed_read_prefix(perm.read_prefix, slug) {
-        res.send_json({ "error": Json::string("document outside readable range") }, status=403)
+        res.send_json(
+          { "error": Json::string("document outside readable range") },
+          status=403,
+        )
         return
       }
       match storage.read(slug) {
@@ -372,9 +431,8 @@ async fn main {
             "status": Json::string(dm.status),
           })
         }
-        None => {
+        None =>
           res.send_json({ "error": Json::string("not found") }, status=404)
-        }
       }
     })
     ctx.add_route(@http.RequestMethod::Put, "/api/v1/docs/*slug", (req, res) => {
@@ -390,8 +448,12 @@ async fn main {
         res.send_text("invalid slug", status=400)
         return
       }
-      if !can_write(perm.scopes) || !allowed_write_prefix(perm.write_prefix, slug) {
-        res.send_json({ "error": Json::string("write permission required") }, status=403)
+      if !can_write(perm.scopes) ||
+        !allowed_write_prefix(perm.write_prefix, slug) {
+        res.send_json(
+          { "error": Json::string("write permission required") },
+          status=403,
+        )
         return
       }
       let content = req.body.text()
@@ -420,8 +482,12 @@ async fn main {
         res.send_text("invalid slug", status=400)
         return
       }
-      if !can_write(perm.scopes) || !allowed_write_prefix(perm.write_prefix, slug) {
-        res.send_json({ "error": Json::string("write permission required") }, status=403)
+      if !can_write(perm.scopes) ||
+        !allowed_write_prefix(perm.write_prefix, slug) {
+        res.send_json(
+          { "error": Json::string("write permission required") },
+          status=403,
+        )
         return
       }
       storage.delete(slug)
@@ -429,7 +495,7 @@ async fn main {
     })
   })
 
-  let server = @rserver.Server(api=api, port=port, component=@app.app)
+  let server = @rserver.Server(api~, port~, component=@app.app)
   server.run_forever()
 }
 
@@ -439,10 +505,7 @@ fn parse_login(body : String) -> (String, String) {
   let json = @json.parse(body) catch { _ => return ("", "") }
   match json {
     Json::Object(map) =>
-      (
-        map_get_string(map, "username"),
-        map_get_string(map, "password"),
-      )
+      (map_get_string(map, "username"), map_get_string(map, "password"))
     _ => ("", "")
   }
 }
@@ -494,7 +557,11 @@ fn default_site() -> SiteConfig {
 
 ///|
 fn default_or(value : String, fallback : String) -> String {
-  if value.is_empty() { fallback } else { value }
+  if value.is_empty() {
+    fallback
+  } else {
+    value
+  }
 }
 
 ///|
@@ -616,16 +683,25 @@ async fn render_doc_page(
       let tags = if doc.tags.is_empty() {
         ""
       } else {
-        let chips = doc.tags.replace_all(old=", ", new=",").split(",").map(fn(tag) {
-          "<span class=\"tag\">" + tag.trim().to_owned() + "</span>"
-        }).join("")
+        let chips = doc.tags
+          .replace_all(old=", ", new=",")
+          .split(",")
+          .map(fn(tag) {
+            "<span class=\"tag\">" + tag.trim().to_owned() + "</span>"
+          })
+          .join("")
         "<div class=\"tags\"><small>标签</small>" + chips + "</div>"
       }
       let tree = if site_show_tree(meta) {
-        let items = storage.list().map(fn(item) {
-          "<li><a href=\"/d/" + item + "\">" + item + "</a></li>"
-        }).join("")
-        "<nav class=\"doc-tree\"><strong>文档目录</strong><ul>" + items + "</ul></nav>"
+        let items = storage
+          .list()
+          .map(fn(item) {
+            "<li><a href=\"/d/" + item + "\">" + item + "</a></li>"
+          })
+          .join("")
+        "<nav class=\"doc-tree\"><strong>文档目录</strong><ul>" +
+        items +
+        "</ul></nav>"
       } else {
         ""
       }
@@ -636,10 +712,22 @@ async fn render_doc_page(
         ""
       }
       "<!doctype html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>" +
-      doc.title + " - " + product_name +
-      "</title><link rel=\"stylesheet\" href=\"/site.css\"></head><body><main class=\"reading-shell\"><div class=\"topbar\"><a href=\"/\">" + product_name +
-      "</a><span class=\"account\">" + edit_link + "</span></div><div class=\"breadcrumbs\">" + breadcrumb +
-      "</div>" + tree + "<article>" + html + tags + "</article></main></body></html>"
+      doc.title +
+      " - " +
+      product_name +
+      "</title><script>(function(){try{var t=localStorage.getItem('mbt-theme');if(t==='light'||t==='dark'){document.documentElement.dataset.theme=t}}catch(e){}})()</script>" +
+      "<link rel=\"stylesheet\" href=\"/site.css\"></head><body><main class=\"reading-shell\"><div class=\"topbar\"><a href=\"/\">" +
+      product_name +
+      "</a><span class=\"account\">" +
+      edit_link +
+      "</span></div><div class=\"breadcrumbs\">" +
+      breadcrumb +
+      "</div>" +
+      tree +
+      "<article>" +
+      html +
+      tags +
+      "</article></main></body></html>"
     }
     None =>
       "<!doctype html><html><head><meta charset=\"utf-8\"><title>文档不存在</title></head><body><p>文档不存在</p></body></html>"
@@ -678,11 +766,15 @@ async fn serve_llms(storage : @lib.LocalStorage, prefixes : String) -> String {
   output.write_string("这是一个由 MoonBit 驱动的 Markdown Wiki。\n\n")
   for slug in storage.list() {
     let allowed = prefixes.is_empty() ||
-      prefixes.split(",").any(fn(prefix) {
+      prefixes
+      .split(",")
+      .any(fn(prefix) {
         let prefix = prefix.trim().to_owned()
         slug == prefix || slug.has_prefix(prefix + "/")
       })
-    if !allowed { continue }
+    if !allowed {
+      continue
+    }
     match storage.read(slug) {
       Some(raw) => {
         let meta = @lib.document_meta(raw)
@@ -693,7 +785,9 @@ async fn serve_llms(storage : @lib.LocalStorage, prefixes : String) -> String {
         output.write_string(")")
         if !meta.tags.is_empty() {
           output.write_string(" #")
-          output.write_string(meta.tags.replace(old=", ", new=" #").replace(old=",", new=" "))
+          output.write_string(
+            meta.tags.replace(old=", ", new=" #").replace(old=",", new=" "),
+          )
         }
         output.write_string("\n")
       }
@@ -712,7 +806,9 @@ async fn serve_rss(storage : @lib.LocalStorage, meta : @lib.JsonMeta) -> String 
   out.write_string("<rss version=\"2.0\"><channel>\n")
   out.write_string("<title>" + escape_xml(product_name) + "</title>\n")
   out.write_string("<link>http://127.0.0.1/</link>\n")
-  out.write_string("<description>" + escape_xml(product_name) + " 文档订阅</description>\n")
+  out.write_string(
+    "<description>" + escape_xml(product_name) + " 文档订阅</description>\n",
+  )
   for slug in storage.list() {
     match storage.read(slug) {
       Some(raw) => {
@@ -721,8 +817,12 @@ async fn serve_rss(storage : @lib.LocalStorage, meta : @lib.JsonMeta) -> String 
         let desc = if dm.tags.is_empty() { "" } else { "标签：" + dm.tags }
         out.write_string("<item>\n")
         out.write_string("<title>" + escape_xml(title) + "</title>\n")
-        out.write_string("<link>http://127.0.0.1/d/" + escape_xml(slug) + "</link>\n")
-        out.write_string("<description>" + escape_xml(desc) + "</description>\n")
+        out.write_string(
+          "<link>http://127.0.0.1/d/" + escape_xml(slug) + "</link>\n",
+        )
+        out.write_string(
+          "<description>" + escape_xml(desc) + "</description>\n",
+        )
         out.write_string("</item>\n")
       }
       None => ()
@@ -734,26 +834,34 @@ async fn serve_rss(storage : @lib.LocalStorage, meta : @lib.JsonMeta) -> String 
 
 ///|
 fn escape_xml(s : String) -> String {
-  s.replace_all(old="&", new="&amp;")
+  s
+  .replace_all(old="&", new="&amp;")
   .replace_all(old="<", new="&lt;")
   .replace_all(old=">", new="&gt;")
 }
 
 ///|
-fn build_breadcrumb(product_name : String, slug : String, title : String) -> String {
+fn build_breadcrumb(
+  product_name : String,
+  slug : String,
+  title : String,
+) -> String {
   if slug == "index" {
-    "<a href=\"/\">" + product_name + "</a><span>/</span><strong>首页</strong>"
+    "<a href=\"/\">" +
+    product_name +
+    "</a><span>/</span><strong>首页</strong>"
   } else {
     let parts = slug.split("/").to_array()
     let mut links = "<a href=\"/\">" + product_name + "</a><span>/</span>"
     for i in 0..<parts.length() {
       let part = parts[i].to_owned()
       let href = "/d/" + parts[:i + 1].join("/")
-      links = links + (if i == parts.length() - 1 {
-        "<strong>" + title + "</strong>"
-      } else {
-        "<a href=\"" + href + "\">" + part + "</a>"
-      })
+      links = links +
+        (if i == parts.length() - 1 {
+          "<strong>" + title + "</strong>"
+        } else {
+          "<a href=\"" + href + "\">" + part + "</a>"
+        })
       if i < parts.length() - 1 {
         links = links + "<span>/</span>"
       }
@@ -771,7 +879,10 @@ struct CatInfo {
 
 ///|
 /// 聚合所有文档的分类，返回分类 + 文档计数。
-async fn category_list(storage : @lib.LocalStorage, meta : @lib.JsonMeta) -> Array[CatInfo] {
+async fn category_list(
+  storage : @lib.LocalStorage,
+  meta : @lib.JsonMeta,
+) -> Array[CatInfo] {
   let counts : Map[String, Int] = Map([])
   for slug in storage.list() {
     match storage.read(slug) {
@@ -788,9 +899,14 @@ async fn category_list(storage : @lib.LocalStorage, meta : @lib.JsonMeta) -> Arr
   let defined = meta.list_categories()
   let result : Array[CatInfo] = []
   for slug, count in counts {
-    let name = match defined.fold(init="", fn(acc, c) {
-      if c.slug == slug { c.name } else { acc }
-    }) {
+    let name = match
+      defined.fold(init="", fn(acc, c) {
+        if c.slug == slug {
+          c.name
+        } else {
+          acc
+        }
+      }) {
       "" => slug
       n => n
     }
@@ -813,13 +929,24 @@ async fn render_category_page(
       Some(raw) => {
         let dm = @lib.document_meta(raw)
         if dm.category == slug && dm.status != "hidden" {
-          items.push("<li><a href=\"/d/" + doc_slug + "\">" + dm.title + "</a></li>")
+          items.push(
+            "<li><a href=\"/d/" + doc_slug + "\">" + dm.title + "</a></li>",
+          )
         }
       }
       None => ()
     }
   }
-  "<!doctype html><html><head><meta charset=\"utf-8\"><title>" + slug + " - " + product_name +
-  "</title><link rel=\"stylesheet\" href=\"/site.css\"></head><body><main class=\"reading-shell\"><div class=\"topbar\"><a href=\"/\">" + product_name +
-  "</a></div><h1>分类：" + slug + "</h1><ul>" + items.join("") + "</ul></main></body></html>"
+  "<!doctype html><html><head><meta charset=\"utf-8\"><title>" +
+  slug +
+  " - " +
+  product_name +
+  "</title><script>(function(){try{var t=localStorage.getItem('mbt-theme');if(t==='light'||t==='dark'){document.documentElement.dataset.theme=t}}catch(e){}})()</script>" +
+  "<link rel=\"stylesheet\" href=\"/site.css\"></head><body><main class=\"reading-shell\"><div class=\"topbar\"><a href=\"/\">" +
+  product_name +
+  "</a></div><h1>分类：" +
+  slug +
+  "</h1><ul>" +
+  items.join("") +
+  "</ul></main></body></html>"
 }

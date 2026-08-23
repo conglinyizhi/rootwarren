@@ -25,11 +25,24 @@ pub fn document_meta(raw : String) -> DocumentMeta {
     None => "mbt-mdwiki"
   }
   if !raw.has_prefix("---\n") {
-    return { body: raw, title: fallback_title, tags: "", status: "public", category: "" }
+    return {
+      body: raw,
+      title: fallback_title,
+      tags: "",
+      status: "public",
+      category: "",
+    }
   }
   let end = match raw.find("\n---\n") {
     Some(i) => i
-    None => return { body: raw, title: fallback_title, tags: "", status: "public", category: "" }
+    None =>
+      return {
+        body: raw,
+        title: fallback_title,
+        tags: "",
+        status: "public",
+        category: "",
+      }
   }
   let header = raw[4:end]
   let body = raw[end + 5:].to_owned()

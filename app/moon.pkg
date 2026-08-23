@@ -1,7 +1,7 @@
 import {
   "moonbit-community/rabbita",
   "moonbit-community/rabbita/html",
-  "moonbit-community/rabbita/http" @http,
+  "moonbit-community/rabbita/http",
   "moonbitlang/core/json",
 }
 

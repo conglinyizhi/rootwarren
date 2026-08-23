@@ -3,14 +3,14 @@ import {
   "hackwaly/moonback",
   "hackwaly/moonback/middlewares/unstable_static" @static,
   "moonbitlang/async",
-  "moonbitlang/async/fs" @fs,
-  "moonbitlang/async/http" @http,
-  "moonbitlang/core/argparse" @argparse,
+  "moonbitlang/async/fs",
+  "moonbitlang/async/http",
+  "moonbitlang/core/argparse",
   "moonbitlang/core/env",
   "moonbitlang/core/encoding/utf8",
   "moonbitlang/core/json",
   "conglinyizhi/mbt-mdwiki" @lib,
-  "conglinyizhi/mbt-mdwiki/app" @app,
+  "conglinyizhi/mbt-mdwiki/app",
 }
 
 supported_targets = "native+wasm"
