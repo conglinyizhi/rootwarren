@@ -26,6 +26,11 @@ fn JsonMeta::api_keys_path(self : JsonMeta) -> String {
 }
 
 ///|
+fn JsonMeta::users_path(self : JsonMeta) -> String {
+  self.dir + "/users.json"
+}
+
+///|
 async fn JsonMeta::load_config(self : JsonMeta) -> Map[String, String] {
   let path = self.config_path()
   guard @fs.exists(path) else { return {} }
@@ -163,6 +168,145 @@ async fn JsonMeta::save_api_keys(
   let tmp = self.api_keys_path() + ".tmp"
   @fs.write_file(tmp, content)
   @fs.rename(tmp, self.api_keys_path(), replace=true)
+}
+
+///|
+pub struct UserRecord {
+  id : Int
+  username : String
+  password_hash : String
+  role : String
+  mut enabled : Bool
+  write_prefix : String
+}
+
+///|
+async fn JsonMeta::load_users(self : JsonMeta) -> Array[UserRecord] {
+  let path = self.users_path()
+  guard @fs.exists(path) else { return [] }
+  let content = @utf8.decode_lossy(@fs.read_file(path).binary()[:])
+  let json = @json.parse(content) catch { _ => return [] }
+  let users : Array[UserRecord] = []
+  if json is Array(items) {
+    for item in items {
+      if item is Object(o) {
+        users.push({
+          id: json_int(o, "id"),
+          username: json_str(o, "username"),
+          password_hash: json_str(o, "password_hash"),
+          role: json_str(o, "role"),
+          enabled: json_bool(o, "enabled"),
+          write_prefix: json_str(o, "write_prefix"),
+        })
+      }
+    }
+  }
+  users
+}
+
+///|
+async fn JsonMeta::save_users(
+  self : JsonMeta,
+  users : Array[UserRecord],
+) -> Unit {
+  let items : Array[Json] = []
+  for user in users {
+    items.push(
+      Json::object({
+        "id": Json::number(user.id.to_double()),
+        "username": Json::string(user.username),
+        "password_hash": Json::string(user.password_hash),
+        "role": Json::string(user.role),
+        "enabled": Json::boolean(user.enabled),
+        "write_prefix": Json::string(user.write_prefix),
+      }),
+    )
+  }
+  let tmp = self.users_path() + ".tmp"
+  @fs.write_file(tmp, Json::array(items).stringify(indent=2))
+  @fs.rename(tmp, self.users_path(), replace=true)
+}
+
+///|
+pub async fn JsonMeta::find_user(
+  self : JsonMeta,
+  username : String,
+) -> UserRecord? {
+  for user in self.load_users() {
+    if user.username == username && user.enabled {
+      return Some(user)
+    }
+  }
+  None
+}
+
+///|
+pub async fn JsonMeta::list_users(self : JsonMeta) -> Array[UserRecord] {
+  self.load_users()
+}
+
+///|
+pub async fn JsonMeta::create_user(
+  self : JsonMeta,
+  username : String,
+  password : String,
+  role : String,
+  write_prefix : String,
+) -> Bool {
+  let users = self.load_users()
+  for user in users {
+    if user.username == username {
+      return false
+    }
+  }
+  let next_id = users.fold(init=0, fn(max_id, user) {
+      if user.id > max_id {
+        user.id
+      } else {
+        max_id
+      }
+    }) +
+    1
+  users.push({
+    id: next_id,
+    username,
+    password_hash: hash_api_key(password),
+    role,
+    enabled: true,
+    write_prefix,
+  })
+  self.save_users(users)
+  true
+}
+
+///|
+pub async fn JsonMeta::set_user_enabled(
+  self : JsonMeta,
+  id : Int,
+  enabled : Bool,
+) -> Unit {
+  let users = self.load_users()
+  for i in 0..<users.length() {
+    if users[i].id == id {
+      users[i].enabled = enabled
+    }
+  }
+  self.save_users(users)
+}
+
+///|
+pub async fn JsonMeta::verify_user(
+  self : JsonMeta,
+  username : String,
+  password : String,
+) -> UserRecord? {
+  let hash = hash_api_key(password)
+  for user in self.load_users() {
+    if user.username == username && user.enabled && user.password_hash == hash {
+      return Some(user)
+    }
+  }
+  None
 }
 
 ///|
