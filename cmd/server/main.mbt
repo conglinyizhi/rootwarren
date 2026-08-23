@@ -265,6 +265,10 @@ async fn main {
         res.send_void(status=404)
       }
     })
+    ctx.get("/feed", (_req, res) => {
+      let w = res.respond(headers=[("Content-Type", "application/rss+xml; charset=utf-8")])
+      w.write(serve_rss(storage, meta))
+    })
 
     ctx.get("/api/v1/config", (_req, res) => {
       let product_name = match meta.get_config("site.title") {
@@ -675,6 +679,42 @@ async fn serve_llms(storage : @lib.LocalStorage, prefixes : String) -> String {
     }
   }
   output.to_string()
+}
+
+///|
+/// 生成 RSS 2.0 订阅（遍历公开文档的 title/link/description）。
+async fn serve_rss(storage : @lib.LocalStorage, meta : @lib.JsonMeta) -> String {
+  let product_name = site_product_name(meta)
+  let out = StringBuilder()
+  out.write_string("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n")
+  out.write_string("<rss version=\"2.0\"><channel>\n")
+  out.write_string("<title>" + escape_xml(product_name) + "</title>\n")
+  out.write_string("<link>http://127.0.0.1/</link>\n")
+  out.write_string("<description>" + escape_xml(product_name) + " 文档订阅</description>\n")
+  for slug in storage.list() {
+    match storage.read(slug) {
+      Some(raw) => {
+        let dm = @lib.document_meta(raw)
+        let title = if dm.title.is_empty() { slug } else { dm.title }
+        let desc = if dm.tags.is_empty() { "" } else { "标签：" + dm.tags }
+        out.write_string("<item>\n")
+        out.write_string("<title>" + escape_xml(title) + "</title>\n")
+        out.write_string("<link>http://127.0.0.1/d/" + escape_xml(slug) + "</link>\n")
+        out.write_string("<description>" + escape_xml(desc) + "</description>\n")
+        out.write_string("</item>\n")
+      }
+      None => ()
+    }
+  }
+  out.write_string("</channel></rss>\n")
+  out.to_string()
+}
+
+///|
+fn escape_xml(s : String) -> String {
+  s.replace_all(old="&", new="&amp;")
+  .replace_all(old="<", new="&lt;")
+  .replace_all(old=">", new="&gt;")
 }
 
 ///|
