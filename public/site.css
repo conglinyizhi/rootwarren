@@ -123,55 +123,52 @@ h3 { font-size: 1.2rem; margin: 1.2em 0 .5em; }
 
 hr { border: none; border-top: 1px solid var(--border); margin: 2rem 0; }
 
-/* ---------- 布局：双栏（左树 + 右内容） ---------- */
-.layout {
-  display: grid;
-  grid-template-columns: 210px minmax(0, 1fr);
-  gap: 28px;
-  align-items: start;
-}
-
-/* SPA 主工作区：左侧导航树 + 右内容（同双栏布局） */
+/* ---------- 布局：高信息密度 Wiki 侧栏 + 正文 ---------- */
+.layout,
 .workspace {
   display: grid;
-  grid-template-columns: 210px minmax(0, 1fr);
+  grid-template-columns: 232px minmax(0, 1fr);
   gap: 28px;
   align-items: start;
 }
 
 .sidebar {
   position: sticky;
-  top: 24px;
+  top: 18px;
   display: grid;
-  gap: 6px;
-  padding: 18px 16px;
+  gap: 8px;
+  padding: 12px;
   background: var(--sidebar-bg);
   border: 1px solid var(--panel-border);
-  border-radius: 10px;
+  border-radius: 6px;
   box-shadow: var(--shadow);
 }
-
-.sidebar h2 { margin: 2px 0 8px; font-size: 1rem; color: var(--muted); }
-.sidebar p { margin: 0 0 6px; font-size: .82rem; color: var(--muted); }
-
+.sidebar-brand { padding: 4px 8px 10px; border-bottom: 1px solid var(--border); }
+.sidebar-brand h2 { margin: 0; font-size: 1.05rem; color: var(--heading); }
+.sidebar-brand p { margin: 0; font-size: .76rem; color: var(--muted); }
+.sidebar-group { border: 1px solid var(--border); background: color-mix(in srgb, var(--panel) 58%, transparent); }
+.sidebar-group summary { padding: 7px 9px; color: var(--heading); font-weight: 650; cursor: pointer; list-style-position: inside; }
+.sidebar-group[open] summary { border-bottom: 1px solid var(--border); }
+.sidebar-group > p { margin: 7px 9px 2px; font-size: .78rem; color: var(--muted); }
+.sidebar-group ul { list-style: none; margin: 0; padding: 4px 0; }
+.sidebar-group li { margin: 0; }
 .sidebar a,
 .document-button {
   display: block;
-  padding: 8px 10px;
-  border-radius: 6px;
+  padding: 5px 9px;
+  border-radius: 3px;
   color: var(--fg);
   border: 1px solid transparent;
   text-decoration: none;
   background: transparent;
-  font-size: .92rem;
+  font-size: .86rem;
   text-align: left;
   width: 100%;
   cursor: pointer;
 }
-
 .sidebar a:hover,
 .document-button:hover { background: var(--hover-bg); color: var(--accent); }
-
+.editor-panel { min-width: 0; }
 main { min-width: 0; }
 
 /* ---------- 面板 / 卡片 ---------- */
@@ -309,7 +306,10 @@ button:hover, .button:hover { filter: brightness(1.07); text-decoration: none; }
 .topbar a:hover { color: var(--accent); }
 .topbar .account { font-size: 14px; color: var(--muted); }
 .topbar .edit { padding: 6px 12px; border: 1px solid var(--border-dark); border-radius: 6px; color: var(--fg); }
-.topbar .controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.topbar .controls { display: flex; align-items: center; justify-content: flex-end; gap: 10px; flex-wrap: wrap; flex: 1; }
+.wiki-tabs { display: flex; align-items: center; gap: 0; border-bottom: 1px solid var(--border); margin-bottom: 18px; }
+.wiki-tab { display: inline-block; padding: 7px 13px; color: var(--muted); background: transparent; border: 0; border-bottom: 2px solid transparent; text-decoration: none; cursor: pointer; font: inherit; }
+.wiki-tab:hover, .wiki-tab.active { color: var(--heading); border-bottom-color: var(--accent); text-decoration: none; }
 
 /* ---------- 面包屑 ---------- */
 .breadcrumbs {
@@ -405,10 +405,10 @@ article th { background: var(--table-stripe); }
 .auth-bar {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   flex-wrap: wrap;
-  margin-bottom: 12px;
 }
+.auth-bar .button { display: inline-block; }
 .auth-bar input { width: 160px; }
 .auth-bar span { color: var(--muted); font-size: .9rem; }
 
@@ -453,9 +453,9 @@ article th { background: var(--table-stripe); }
 /* ---------- 响应式 ---------- */
 @media (max-width: 760px) {
   body { padding: 18px 12px 48px; }
-  .layout { grid-template-columns: 1fr; gap: 12px; }
-  .sidebar { position: static; grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .sidebar strong { grid-column: 1 / -1; }
+  .layout, .workspace { grid-template-columns: 1fr; gap: 12px; }
+  .sidebar { position: static; }
+  .sidebar-group { min-width: 0; }
   label { grid-template-columns: 1fr; gap: 6px; }
   label input, label select { min-width: 0; }
   .doc-tree { float: none; width: auto; margin: 0 0 24px; }

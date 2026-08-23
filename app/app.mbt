@@ -10,7 +10,9 @@ using @rabbita {type Val, type Html, type Cmd, type Emit}
 
 ///|
 using @html {
+  a,
   body,
+  details,
   button,
   div,
   h1,
@@ -28,6 +30,7 @@ using @html {
   section,
   select,
   span,
+  summary,
   textarea,
   title,
   ul,
@@ -39,10 +42,6 @@ pub enum Msg {
   LoadDocs
   SelectDoc(String)
   SetQuery(String)
-  SetLoginUser(String)
-  SetLoginPass(String)
-  ToggleLogin
-  Login
   Logout
   Edit
   SetContent(String)
@@ -52,7 +51,6 @@ pub enum Msg {
   ConfigLoaded(String)
   DocsLoaded(Result[String, Error])
   DocLoaded(String, Result[String, Error])
-  LoginDone(Result[String, Error])
   MeLoaded(String)
   SaveDone(Result[String, Error])
   DeleteDone(Result[String, Error])
@@ -91,11 +89,8 @@ pub struct Model {
   loaded : Bool
   // 认证与编辑
   authed : Bool
-  show_login : Bool
   editing : Bool
   content : String
-  login_user : String
-  login_pass : String
   slug_input : String
   // 后台管理
   admin_view : Bool
@@ -113,13 +108,6 @@ pub struct Model {
 } derive(Eq)
 
 ///|
-
-///|
-/// 登录请求体（ToJson 需要显式 record 类型）。
-pub struct LoginPayload {
-  username : String
-  password : String
-} derive(ToJson)
 
 ///|
 /// 站点配置请求体。
@@ -153,11 +141,8 @@ pub fn initial_model() -> Model {
     busy: false,
     loaded: false,
     authed: false,
-    show_login: false,
     editing: false,
     content: "",
-    login_user: "",
-    login_pass: "",
     slug_input: "",
     admin_view: false,
     users: [],
@@ -378,19 +363,6 @@ pub fn update(model : Model, msg : Msg, emit : Emit[Msg]) -> (Model, Cmd) {
         ),
       )
     SetQuery(query) => ({ ..model, query, }, @rabbita.none)
-    SetLoginUser(u) => ({ ..model, login_user: u }, @rabbita.none)
-    SetLoginPass(p) => ({ ..model, login_pass: p }, @rabbita.none)
-    ToggleLogin => ({ ..model, show_login: !model.show_login }, @rabbita.none)
-    Login =>
-      (
-        { ..model, busy: true, status: "正在登录……" },
-        @http.post("/api/auth/login")
-        .with_json(LoginPayload::{
-          username: model.login_user,
-          password: model.login_pass,
-        })
-        .expect_text(emit.map(result => LoginDone(result))),
-      )
     Logout =>
       (
         { ..model, busy: true, status: "正在退出……" },
@@ -461,19 +433,6 @@ pub fn update(model : Model, msg : Msg, emit : Emit[Msg]) -> (Model, Cmd) {
           status: match result {
             Ok(_) => "打开「" + slug + "」。"
             Err(_) => "打开文档失败。"
-          },
-        },
-        @rabbita.none,
-      )
-    LoginDone(result) =>
-      (
-        {
-          ..model,
-          busy: false,
-          authed: result is Ok(_),
-          status: match result {
-            Ok(_) => "登录成功。"
-            Err(_) => "登录失败：请检查用户名/密码。"
           },
         },
         @rabbita.none,
@@ -687,11 +646,10 @@ pub fn app() -> Val[Html] {
     ])
     let auth_ui = if model.authed {
       div(class="auth-bar", [
-        span("已登录"),
         button(
           on_click=emit(ShowAdmin),
           attrs=@html.Attrs::build().data_set("name", "admin-button"),
-          "管理",
+          "进入管理面板",
         ),
         button(
           on_click=emit(Logout),
@@ -701,35 +659,12 @@ pub fn app() -> Val[Html] {
       ])
     } else {
       div(class="auth-bar", [
-        if model.show_login {
-          div(class="login-form", [
-            input(
-              placeholder="用户名",
-              value=model.login_user,
-              on_input=text => emit(SetLoginUser(text)),
-              attrs=@html.Attrs::build().data_set("name", "login-user"),
-            ),
-            input(
-              input_type=@html.Password,
-              placeholder="密码",
-              value=model.login_pass,
-              on_input=text => emit(SetLoginPass(text)),
-              attrs=@html.Attrs::build().data_set("name", "login-pass"),
-            ),
-            button(
-              on_click=emit(Login),
-              attrs=@html.Attrs::build().data_set("name", "login-button"),
-              "登录",
-            ),
-          ])
-        } else {
-          button(
-            class="button",
-            on_click=emit(ToggleLogin),
-            attrs=@html.Attrs::build().data_set("name", "login-toggle"),
-            "登录",
-          )
-        },
+        a(
+          class="button",
+          href="/sys/login",
+          attrs=@html.Attrs::build().data_set("name", "login-link"),
+          "登录",
+        ),
       ])
     }
     let admin_panel = div(class="admin-panel", [
@@ -888,14 +823,50 @@ pub fn app() -> Val[Html] {
     }
     let workspace_view = div(class="workspace", [
       div(class="sidebar", [
-        h2("文档导航"),
-        p(model.slugs.length().to_string() + " 篇文档"),
-        div(
-          attrs=@html.Attrs::build().data_set("name", "document-list"),
-          doc_buttons,
-        ),
+        div(class="sidebar-brand", [h2(model.title), p("Wiki")]),
+        details(open=true, class="sidebar-group", [
+          summary("导航"),
+          ul([
+            li([a(href="/", "首页")]),
+            li([a(href="/feed", "最近更新")]),
+            li([a(href="/llms.txt", "LLM 文档索引")]),
+          ]),
+        ]),
+        details(open=true, class="sidebar-group", [
+          summary("文档"),
+          p(model.slugs.length().to_string() + " 篇文档"),
+          div(
+            attrs=@html.Attrs::build().data_set("name", "document-list"),
+            doc_buttons,
+          ),
+        ]),
+        details(class="sidebar-group", [
+          summary("工具"),
+          ul([
+            li([a(href="/api/v1/docs", "文档 API")]),
+            li([a(href="/docs/API.md", "API 说明")]),
+            li([a(href="/feed", "RSS 订阅")]),
+          ]),
+        ]),
+        details(class="sidebar-group", [
+          summary("其他页面"),
+          ul([li([a(href="/sys/login", "登录")])]),
+        ]),
       ]),
-      div(class="editor-panel", [h2(active_title), editor]),
+      div(class="editor-panel", [
+        div(class="wiki-tabs", [
+          span(class="wiki-tab active", "阅读"),
+          button(
+            class="wiki-tab",
+            on_click=emit(Edit),
+            attrs=@html.Attrs::build().data_set("name", "edit-tab"),
+            "编辑",
+          ),
+          a(class="wiki-tab", href="#history", "查看历史"),
+        ]),
+        h2(active_title),
+        editor,
+      ]),
     ])
     let content_area = if model.admin_view {
       admin_panel
@@ -933,9 +904,9 @@ pub fn app() -> Val[Html] {
                 attrs=@html.Attrs::build().data_set("name", "search-input"),
               ),
               theme_switch,
+              auth_ui,
             ]),
           ]),
-          auth_ui,
           p(model.status),
           content_area,
         ],

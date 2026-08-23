@@ -382,6 +382,11 @@ async fn main {
       res.send_html(@moonback.Html::raw(page))
     })
 
+    ctx.get("/sys/login", (_req, res) => {
+      let page = render_login_page(meta)
+      res.send_html(@moonback.Html::raw(page))
+    })
+
     ctx.get("/api/v1/docs", (req, res) => {
       let perm = auth.docs_auth(meta, req)
       if !can_read(perm.scopes) {
@@ -947,4 +952,15 @@ async fn render_category_page(
   "</h1><ul>" +
   items.join("") +
   "</ul></main></body></html>"
+}
+
+///|
+/// 渲染独立登录页（/sys/login）：用户名/密码 + 提交登录后跳转。
+async fn render_login_page(meta : @lib.JsonMeta) -> String {
+  let product_name = site_product_name(meta)
+  "<!doctype html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>登录 - " +
+  product_name +
+  "</title><script src=\"/theme.js\"></script><link rel=\"stylesheet\" href=\"/site.css\"></head><body><main class=\"login-shell\"><h1 class=\"login-title\">" +
+  product_name +
+  "</h1><p class=\"login-sub\">请登录以继续</p><form id=\"login-form\"><div class=\"field\"><label>用户名</label><input id=\"login-user\" autocomplete=\"username\"></div><div class=\"field\"><label>密码</label><input id=\"login-pass\" type=\"password\" autocomplete=\"current-password\"></div><button type=\"submit\" class=\"button\">登录</button></form><p id=\"login-msg\" class=\"notice\"></p><p class=\"login-back\"><a href=\"/\">返回文档站</a></p></main><script>(function(){var f=document.getElementById('login-form');if(f){f.addEventListener('submit',function(e){e.preventDefault();var u=document.getElementById('login-user').value,p=document.getElementById('login-pass').value,m=document.getElementById('login-msg');fetch('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:u,password:p})}).then(function(r){if(r.ok){location.href='/'}else if(m){m.textContent='登录失败：请检查用户名/密码'}}).catch(function(){if(m){m.textContent='网络错误，请重试'}})})}})()</script></body></html>"
 }
