@@ -1,30 +1,17 @@
-// Learn more about moon.mod configuration:
-// https://docs.moonbitlang.com/en/latest/toolchain/moon/module.html
-//
-// To add a dependency, run this command in your terminal:
-//   moon add moonbitlang/x
-//
-// Or manually declare it in `import`, for example:
-// import {
-//   "moonbitlang/x@0.4.6",
-// }
-
 name = "conglinyizhi/mbt-mdwiki"
-
 version = "0.1.0"
-
 readme = "README.mbt.md"
-
 repository = ""
-
 license = "Apache-2.0"
-
-keywords = [ ]
-
+keywords = [
+  "moonbit",
+  "wiki",
+  "markdown",
+  "full-stack",
+  "ssr",
+]
 preferred_target = "native"
-
-description = "mbt-mdwiki: MoonBit 文档站后端，提供受保护的 REST API 供 LLM 读写 Markdown 文档"
-
+description = "mbt-mdwiki: MoonBit full-stack Markdown wiki backend with protected REST API for LLM/client read and write"
 import {
   "moonbitlang/async@0.21.0",
   "moonbit-community/cmark@0.4.6",

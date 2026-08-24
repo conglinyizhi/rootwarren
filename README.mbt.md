@@ -44,10 +44,26 @@ make dev              # 自动准备 .env + 起 warren 全栈 dev server（端�
 
 ```sh
 make build           # native server + frontend js
-make test            # 运行测试（当前无测试入口）
+make test            # 运行测试（moon test）
 make init-env        # 生成 .env 模板（不覆盖已有）
 moon fmt             # 格式化
 ```
+
+## 测试 / CI
+
+- `moon test` 运行根库纯函数测试（front matter 解析、wikilink 重写、站点配置回退）。
+- 仓库含 GitHub Actions（`.github/workflows/ci.yml`）：`moon check` + `moon test`。
+- 本机 native 构建需 `MOON_CC=clang`（Makefile 已导出）。
+
+## 发布（mooncakes.io）
+
+项目以 `moon publish` 发布到 mooncakes.io。发布前：
+
+1. 在 `moon.mod` 填入公开 GitHub 仓库地址（`repository`），并确保仓库公开（mooncakes 需要借它打包/展示文档与 README）。
+2. `moon check`、`moon test`、`make build` 全部通过。
+3. 本地 `moon publish` 并按 mooncakes 提示登录授权。
+
+> 注意：`meta/`、`public/index.js`、`.env` 等本地/生成物已 gitignore，不会发布。
 
 ## 登录与配置
 
