@@ -27,7 +27,7 @@ public/         静态资源（index.js 由 warren 生成，勿提交）
 
 ## 开发
 
-本机 MoonBit nightly 的 native archiver 探测有误，需 `MOON_CC=clang`（Makefile 已导出）。
+本机 MoonBit nightly 的 native archiver 探测有误，需 `MOON_CC=clang`（Makefile 已导出）。`make` 仅方便快速启动和开发调试，其中 `make dev` 依赖 [warren](https://github.com/moonbit-community/rabbita/blob/main/warren/README.md) 进行热更新
 
 ```sh
 make check            # 类型检查全部 target

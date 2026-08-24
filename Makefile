@@ -1,6 +1,7 @@
 # rootwarren 构建辅助
 # 说明：本机 MoonBit nightly 默认 archiver 探测有误（找 /usr/bin/lib.exe），
 # 需要显式指定 MOON_CC=clang（warren + native 后端均需要）。
+# 开发机环境：ArchLinux & Nightly moonbit
 MOON ?= moon
 export MOON_CC ?= clang
 
