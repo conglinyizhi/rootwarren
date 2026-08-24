@@ -9,11 +9,23 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - name: Install MoonBit
-        uses: moonbitlang/moon@v1
-      - name: Install clang
+        run: |
+          curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash
+          echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
+
+      - name: Install clang (for native archiver)
         run: sudo apt-get update && sudo apt-get install -y clang
+
+      - name: Show toolchain
+        run: moon version --all
+
+      - name: Update mooncakes registry
+        run: moon update
+
       - name: Check
         run: MOON_CC=clang moon check
+
       - name: Test
         run: MOON_CC=clang moon test
