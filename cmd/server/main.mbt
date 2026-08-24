@@ -39,12 +39,28 @@ async fn main {
     register_site_routes(ctx, storage, meta)
     // 文档路由（/d、/posts、/category、/api/v1/docs、/api/v1/backlinks）
     register_docs_routes(ctx, storage, meta, auth)
+    // 兜底：未匹配路径 → styled 404 页（避免浏览器赤裸的 404 文本）
+    ctx.get("/*path", (_req, res) => {
+      let page = render_not_found_page(meta)
+      res.send_html(@moonback.Html::raw(page), status=404)
+    })
   })
 
   let app = @moonback.App(api)
   let listener = @moonback.listen(reuse_addr=true, port=port)
   println("Server is running on http://127.0.0.1:\{port}")
   app.serve(listener)
+}
+
+///|
+/// 渲染 styled 404 页（复用站点主题骨架，避免浏览器赤裸 404 文本）。
+async fn render_not_found_page(meta : @lib.JsonMeta) -> String {
+  let product_name = site_product_name(meta)
+  "<!doctype html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>404 - " +
+  product_name +
+  "</title><script src=\"/theme.js\"></script><link rel=\"stylesheet\" href=\"/site.css\"></head><body><main class=\"reading-shell\"><div class=\"topbar\"><a href=\"/\">" +
+  product_name +
+  "</a></div><div class=\"not-found\"><h1>404</h1><p>页面不存在或已被移除。</p><p><a href=\"/\">返回文档站首页</a></p></div></main></body></html>"
 }
 
 ///|

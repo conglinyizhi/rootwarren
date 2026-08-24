@@ -342,6 +342,10 @@ button:hover, .button:hover { filter: brightness(1.07); text-decoration: none; }
 .doc-tree li { margin: 8px 0; }
 .doc-tree strong { color: var(--muted); font-weight: 600; }
 
+/* ---------- 404 页 ---------- */
+.not-found { max-width: 760px; margin: 64px auto 0; text-align: center; padding: 32px 20px; }
+.not-found h1 { font-size: 3rem; color: var(--accent); margin: 0 0 8px; }
+
 /* ---------- 正文 ---------- */
 article {
   max-width: 760px;
