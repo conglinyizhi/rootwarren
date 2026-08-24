@@ -345,6 +345,22 @@ async fn main {
           return
         }
       }
+      // 以 `.md` 结尾的 URL：返回该文档的 Markdown 原文（供 LLM/Agent 直接读取，避免 HTML 干扰）
+      if slug.has_suffix(".md") {
+        let raw_slug = slug[:slug.length() - 3].to_owned()
+        match storage.read(raw_slug) {
+          Some(raw) => {
+            let dm = @lib.document_meta(raw)
+            let body = dm.body
+            let w = res.respond(status=200, headers=[
+              ("Content-Type", "text/markdown; charset=utf-8"),
+            ])
+            w.write(ensure_trailing_newline(body))
+          }
+          None => res.send_void(status=404)
+        }
+        return
+      }
       let page = render_doc_page(storage, meta, slug)
       res.send_html(@moonback.Html::raw(page))
     })
@@ -707,6 +723,16 @@ async fn site_show_tree(meta : @lib.JsonMeta) -> Bool {
 }
 
 ///|
+/// 确保字符串以单个换行结尾（供 LLM/Agent 读取 Markdown 原文时整洁）。
+fn ensure_trailing_newline(s : String) -> String {
+  if s.is_empty() || s.has_suffix("\n") {
+    s
+  } else {
+    s + "\n"
+  }
+}
+
+///|
 /// 服务端渲染一篇文章为完整 HTML 页面（复用根库渲染工具）。
 async fn render_doc_page(
   storage : @lib.LocalStorage,
@@ -824,7 +850,7 @@ async fn serve_llms(storage : @lib.LocalStorage, prefixes : String) -> String {
         output.write_string(meta.title)
         output.write_string("](/d/")
         output.write_string(slug)
-        output.write_string(")")
+        output.write_string(".md)")
         if !meta.tags.is_empty() {
           output.write_string(" #")
           output.write_string(
