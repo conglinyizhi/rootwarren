@@ -285,4 +285,25 @@ fn register_admin_routes(
     meta.revoke_api_key(id)
     res.send_json({ "ok": Json::boolean(true) })
   })
+
+  // 独立后台管理页：/sys/admin（固定 URL 可收藏，权限校验，无权限跳登录）
+  ctx.get("/sys/admin", (req, res) => {
+    if !auth.is_admin(req) {
+      res.send_void(status=302, headers=[("Location", "/sys/login?next=/sys/admin")])
+      return
+    }
+    let page = render_admin_page(meta)
+    res.send_html(@moonback.Html::raw(page))
+  })
+}
+
+///|
+/// 渲染独立后台管理页（/sys/admin）：完整 HTML + 内嵌 JS 调 /api/admin/* API。
+async fn render_admin_page(meta : @lib.JsonMeta) -> String {
+  let product_name = site_product_name(meta)
+  "<!doctype html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>后台管理 - " +
+  product_name +
+  "</title><script src=\"/theme.js\"></script><link rel=\"stylesheet\" href=\"/site.css\"></head><body><main class=\"admin-shell\"><div class=\"topbar\"><a href=\"/\">" +
+  product_name +
+  "</a><span class=\"account\"><a href=\"/\">返回文档站</a></span></div><h1>后台管理</h1><section class=\"admin-section\"><h3>用户列表</h3><ul id=\"admin-users\"></ul></section><section class=\"admin-section\"><h3>站点设置</h3><div class=\"field\"><label>产品名</label><input id=\"site-title\"></div><button id=\"save-site\">保存站点设置</button></section><section class=\"admin-section\"><h3>API 密钥</h3><ul id=\"admin-keys\"></ul><label>名称</label><div class=\"field\"><input id=\"key-name\"></div><label>权限</label><select id=\"key-scopes\"><option value=\"read\">只读</option><option value=\"read,write\">读写</option></select><button id=\"create-key\">创建密钥</button><p id=\"key-created\"></p></section></main><script>(function(){var q=function(u){return fetch(u).then(function(r){if(!r.ok){throw new Error(r.status)}return r.json()})};var h=function(t){var d=document.createElement('div');d.innerHTML=t;return d.firstChild};var ru=document.getElementById('admin-users'),rk=document.getElementById('admin-keys');function loadUsers(){q('/api/admin/users').then(function(d){ru.innerHTML='';d.users.forEach(function(u){var li=h('<li>'+u.username+' · '+u.role+(u.enabled?'':' · 停用')+'</li>');var b=h('<button>'+ (u.enabled?'停用':'启用') +'</button>');b.onclick=function(){fetch('/api/admin/users/update',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:u.id,role:u.role,write_prefix:u.write_prefix||'','enabled':Number(!u.enabled)})}).then(function(){loadUsers()})};li.appendChild(b);ru.appendChild(li)})})}function loadKeys(){q('/api/admin/keys').then(function(d){rk.innerHTML='';d.keys.forEach(function(k){var li=h('<li>'+k.name+' · '+k.scopes+(k.enabled?'':' · 已吊销')+'</li>');if(k.enabled){var b=h('<button>吊销</button>');b.onclick=function(){fetch('/api/admin/keys/revoke',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:k.id})}).then(function(){loadKeys()})};li.appendChild(b)}rk.appendChild(li)})})}function loadSite(){q('/api/admin/site').then(function(d){document.getElementById('site-title').value=d.title||''})}loadUsers();loadKeys();loadSite();document.getElementById('save-site').onclick=function(){fetch('/api/admin/site',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title:document.getElementById('site-title').value,public:'true',show_tree:'true',llms_mode:'public',llms_prefixes:''})}).then(function(){loadSite()})};document.getElementById('create-key').onclick=function(){var name=document.getElementById('key-name').value,scopes=document.getElementById('key-scopes').value;fetch('/api/admin/keys',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:name,scopes:scopes,user_id:0,read_prefix:'',write_prefix:''})}).then(function(r){return r.text()}).then(function(t){document.getElementById('key-created').textContent='创建成功: '+t;loadKeys()})}})()</script></body></html>"
 }
