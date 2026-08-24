@@ -15,6 +15,7 @@ using @html {
   body,
   details,
   button,
+  code,
   div,
   h1,
   h2,
@@ -45,6 +46,7 @@ pub enum Msg {
   Logout
   LoggedOut
   Edit
+  CancelEdit
   SetContent(String)
   Save
   Delete
@@ -70,6 +72,13 @@ pub enum Msg {
   SetKeyWritePrefix(String)
   CreateKey
   KeyCreated(Result[String, Error])
+  RevokeKey(Int)
+  KeysTouched
+  KeysRefreshed(Result[String, Error])
+  ToggleUserEnabled(Int)
+  UsersTouched
+  UsersRefreshed(Result[String, Error])
+  KeyCopied
   // 分类管理
   AdminCategoriesLoaded(Result[String, Error])
   // 主题切换（system/light/dark），只存浏览器
@@ -95,9 +104,10 @@ pub struct Model {
   content : String
   // 后台管理
   admin_view : Bool
-  users : Array[String]
+  users : Array[UserInfo]
   site_title_input : String
-  keys : Array[String]
+  keys : Array[KeyInfo]
+  last_key : String
   key_name : String
   key_scopes : String
   key_read_prefix : String
@@ -110,6 +120,55 @@ pub struct Model {
 
 ///|
 pub extend Model with Eq::{not_equal, equal}
+
+///|
+/// 后台 API 密钥视图（含管理所需字段）。
+pub struct KeyInfo {
+  id : Int
+  name : String
+  scopes : String
+  enabled : Bool
+} derive(Eq)
+
+///|
+pub extend KeyInfo with Eq::{not_equal, equal}
+
+///|
+/// 后台用户视图（含管理所需字段）。
+pub struct UserInfo {
+  id : Int
+  username : String
+  role : String
+  enabled : Bool
+  write_prefix : String
+} derive(Eq)
+
+///|
+pub extend UserInfo with Eq::{not_equal, equal}
+
+///|
+/// 注销 API key 请求体。
+pub struct KeyRevokePayload {
+  id : Int
+} derive(ToJson)
+
+///|
+pub extend KeyRevokePayload with ToJson::{to_json}
+
+///|
+/// 更新用户请求体。
+pub struct UserUpdatePayload {
+  id : Int
+  role : String
+  write_prefix : String
+  enabled : String
+} derive(ToJson)
+
+///|
+pub extend UserUpdatePayload with ToJson::{to_json}
+
+///|
+/// 站点配置请求体。
 
 ///|
 /// 站点配置请求体。
@@ -157,6 +216,7 @@ pub fn initial_model() -> Model {
     users: [],
     site_title_input: "",
     keys: [],
+    last_key: "",
     key_name: "",
     key_scopes: "read",
     key_read_prefix: "",
@@ -238,19 +298,20 @@ fn parse_can_edit(raw : String) -> Bool {
 }
 
 ///|
-fn parse_users(raw : String) -> Array[String] {
+fn parse_users(raw : String) -> Array[UserInfo] {
   let json = @json.parse(raw) catch { _ => return [] }
-  let result : Array[String] = []
+  let result : Array[UserInfo] = []
   if json is Json::Object(map) {
     if map.get("users") is Some(Json::Array(items)) {
       for item in items {
         if item is Json::Object(u) {
-          result.push(
-            match u.get("username") {
-              Some(Json::String(name)) => name
-              _ => ""
-            },
-          )
+          result.push({
+            id: json_int_field(u, "id"),
+            username: json_str_field(u, "username"),
+            role: json_str_field(u, "role"),
+            enabled: json_bool_field(u, "enabled"),
+            write_prefix: json_str_field(u, "write_prefix"),
+          })
         }
       }
     }
@@ -272,24 +333,49 @@ fn parse_site_title(raw : String) -> String {
 }
 
 ///|
-fn parse_keys(raw : String) -> Array[String] {
+fn parse_keys(raw : String) -> Array[KeyInfo] {
   let json = @json.parse(raw) catch { _ => return [] }
-  let result : Array[String] = []
+  let result : Array[KeyInfo] = []
   if json is Json::Object(map) {
     if map.get("keys") is Some(Json::Array(items)) {
       for item in items {
         if item is Json::Object(k) {
-          result.push(
-            match k.get("name") {
-              Some(Json::String(name)) => name
-              _ => ""
-            },
-          )
+          result.push({
+            id: json_int_field(k, "id"),
+            name: json_str_field(k, "name"),
+            scopes: json_str_field(k, "scopes"),
+            enabled: json_bool_field(k, "enabled"),
+          })
         }
       }
     }
   }
   result
+}
+
+///|
+fn json_int_field(o : Map[String, Json], key : String) -> Int {
+  match o.get(key) {
+    Some(Number(n, ..)) => n.to_int()
+    _ => 0
+  }
+}
+
+///|
+fn json_str_field(o : Map[String, Json], key : String) -> String {
+  match o.get(key) {
+    Some(Json::String(s)) => s
+    _ => ""
+  }
+}
+
+///|
+fn json_bool_field(o : Map[String, Json], key : String) -> Bool {
+  match o.get(key) {
+    Some(True) => true
+    Some(False) => false
+    _ => false
+  }
 }
 
 ///|
@@ -396,6 +482,7 @@ pub fn update(model : Model, msg : Msg, emit : Emit[Msg]) -> (Model, Cmd) {
       ({ ..model, busy: false, authed: false, can_edit: false }, @rabbita.none)
     Edit =>
       ({ ..model, editing: true, content: model.active_md }, @rabbita.none)
+    CancelEdit => ({ ..model, editing: false }, @rabbita.none)
     SetContent(content) => ({ ..model, content, }, @rabbita.none)
     Save =>
       (
@@ -629,14 +716,101 @@ pub fn update(model : Model, msg : Msg, emit : Emit[Msg]) -> (Model, Cmd) {
           ..model,
           busy: false,
           key_name: "",
+          last_key: match result {
+            Ok(raw) => extract_key(raw)
+            Err(_) => ""
+          },
           status: match result {
-            Ok(raw) => "API key 已创建：" + extract_key(raw)
+            Ok(_) => "创建成功，请复制下方完整 API key。"
             Err(_) => "创建失败。"
           },
         },
         @rabbita.none,
       )
+    RevokeKey(id) =>
+      (
+        { ..model, busy: true, status: "正在吊销密钥……" },
+        @http.post("/api/admin/keys/revoke")
+        .with_json(KeyRevokePayload::{ id, })
+        .expect_text(emit.map(_result => KeysTouched)),
+      )
+    KeysTouched =>
+      (
+        { ..model, busy: false, status: "密钥已更新。" },
+        refresh_keys_cmd(emit),
+      )
+    KeysRefreshed(result) =>
+      (
+        {
+          ..model,
+          busy: false,
+          keys: match result {
+            Ok(raw) => parse_keys(raw)
+            Err(_) => []
+          },
+        },
+        @rabbita.none,
+      )
+    ToggleUserEnabled(id) =>
+      (
+        { ..model, busy: true, status: "正在更新用户……" },
+        toggle_user_cmd(emit, id, model.users),
+      )
+    UsersTouched =>
+      (
+        { ..model, busy: false, status: "用户已更新。" },
+        refresh_users_cmd(emit),
+      )
+    UsersRefreshed(result) =>
+      (
+        {
+          ..model,
+          busy: false,
+          users: match result {
+            Ok(raw) => parse_users(raw)
+            Err(_) => []
+          },
+        },
+        @rabbita.none,
+      )
+    KeyCopied =>
+      ({ ..model, status: "密钥已复制到剪贴板。" }, @rabbita.none)
   }
+}
+
+///|
+/// 停用/启用用户（利用后端 update 接口改 enabled），并刷新用户列表。
+fn toggle_user_cmd(emit : Emit[Msg], id : Int, users : Array[UserInfo]) -> Cmd {
+  let mut target_enabled = "1"
+  for u in users {
+    if u.id == id {
+      target_enabled = if u.enabled { "0" } else { "1" }
+    }
+  }
+  @http.post("/api/admin/users/update")
+  .with_json(UserUpdatePayload::{
+    id,
+    role: "read",
+    write_prefix: "",
+    enabled: target_enabled,
+  })
+  .expect_text(emit.map(_result => UsersTouched))
+}
+
+///|
+/// 拉取后台用户列表并派发结果。
+fn refresh_users_cmd(emit : Emit[Msg]) -> Cmd {
+  @http.get("/api/admin/users").expect_text(
+    emit.map(result => UsersRefreshed(result)),
+  )
+}
+
+///|
+/// 拉取后台密钥列表并派发结果（吊销/创建后刷新用）。
+fn refresh_keys_cmd(emit : Emit[Msg]) -> Cmd {
+  @http.get("/api/admin/keys").expect_text(
+    emit.map(result => KeysRefreshed(result)),
+  )
 }
 
 ///|
@@ -718,7 +892,31 @@ pub fn app() -> Val[Html] {
       ]),
       section(class="admin-section", [
         h3("用户列表"),
-        ul(model.users.map(fn(u) { li(u) })),
+        div(class="manage-list", [
+          ul(
+            model.users.map(fn(u) {
+              li([
+                span(u.username),
+                span(
+                  class="muted",
+                  "· " + u.role + (if u.enabled { "" } else { " · 停用" }),
+                ),
+                button(
+                  class="small",
+                  on_click=emit(ToggleUserEnabled(u.id)),
+                  attrs=@html.Attrs::build().data_set(
+                    "name", "user-toggle-button",
+                  ),
+                  if u.enabled {
+                    "停用"
+                  } else {
+                    "启用"
+                  },
+                ),
+              ])
+            }),
+          ),
+        ]),
       ]),
       section(class="admin-section", [
         h3("站点设置"),
@@ -739,7 +937,45 @@ pub fn app() -> Val[Html] {
       ]),
       section(class="admin-section", [
         h3("API 密钥"),
-        ul(model.keys.map(fn(k) { li(k) })),
+        if !model.last_key.is_empty() {
+          div(class="key-display", [
+            p("复制下面的密钥（只显示这一次）："),
+            code(model.last_key),
+            button(
+              class="small",
+              on_click=emit(KeyCopied),
+              attrs=@html.Attrs::build().data_set("name", "copy-key-button"),
+              "复制",
+            ),
+          ])
+        } else {
+          @html.nothing
+        },
+        ul(
+          model.keys.map(fn(k) {
+            li([
+              span(k.name),
+              span(
+                class="muted",
+                "· " +
+                k.scopes +
+                (if k.enabled { "" } else { " · 已吊销" }),
+              ),
+              if k.enabled {
+                button(
+                  class="small",
+                  on_click=emit(RevokeKey(k.id)),
+                  attrs=@html.Attrs::build().data_set(
+                    "name", "revoke-key-button",
+                  ),
+                  "吊销",
+                )
+              } else {
+                @html.nothing
+              },
+            ])
+          }),
+        ),
         h4("创建密钥"),
         label(for_="key-name", "名称"),
         div(class="field", [
@@ -825,6 +1061,12 @@ pub fn app() -> Val[Html] {
             attrs=@html.Attrs::build().data_set("name", "delete-button"),
             "删除",
           ),
+          button(
+            class="secondary",
+            on_click=emit(CancelEdit),
+            attrs=@html.Attrs::build().data_set("name", "cancel-edit-button"),
+            "取消",
+          ),
         ]),
       ])
     } else {
@@ -881,7 +1123,12 @@ pub fn app() -> Val[Html] {
       ]),
       div(class="editor-panel", [
         div(class="wiki-tabs", [
-          span(class="wiki-tab active", "阅读"),
+          button(
+            class="wiki-tab active",
+            on_click=emit(CancelEdit),
+            attrs=@html.Attrs::build().data_set("name", "read-tab"),
+            "阅读",
+          ),
           if model.can_edit {
             button(
               class="wiki-tab",
@@ -892,7 +1139,6 @@ pub fn app() -> Val[Html] {
           } else {
             @html.nothing
           },
-          a(class="wiki-tab", href="#history", escape=true, "查看历史"),
         ]),
         editor,
       ]),
