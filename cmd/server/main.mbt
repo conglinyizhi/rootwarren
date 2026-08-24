@@ -23,6 +23,13 @@ async fn main {
   let api = @moonback.Module(ctx => {
     // 静态资源：rabbit page_service 会引用 /styles.css 与 /index.js
     ctx.add_middleware(@static.new(root="public"))
+    // 首页：用 home_page 组件 SSR（服务端渲染 index 文档 + 文档列表，便于 SEO/Agent 直接读）
+    ctx.get("/", (_req, res) => {
+      let input = build_home_input(storage, meta)
+      let page = @rabbita.new(fn() { @app.home_page(input = input) })
+      let html = page.render(url = "http://127.0.0.1/", timeout = 5000)
+      res.send_html(@moonback.Html::raw(html))
+    })
     // 认证（/api/auth/* 与 /sys/login）
     register_auth_routes(ctx, meta, auth)
     // 后台管理（/api/admin/*）
@@ -33,8 +40,26 @@ async fn main {
     register_docs_routes(ctx, storage, meta, auth)
   })
 
-  let server = @rserver.Server(api~, port~, component=@app.app)
-  server.run_forever()
+  let app = @moonback.App(api)
+  let listener = @moonback.listen(reuse_addr=true, port=port)
+  app.serve(listener)
+}
+
+///|
+/// 构造首页输入：读 index 文档正文(渲染为 html) + 文档列表。
+async fn build_home_input(
+  storage : @lib.LocalStorage,
+  meta : @lib.JsonMeta,
+) -> @app.HomeInput {
+  let (title, doc_html) = match storage.read("index") {
+    Some(raw) => {
+      let dm = @lib.document_meta(raw)
+      (dm.title, @lib.render_doc_html(raw, "index"))
+    }
+    None => ("rootwarren", "<p>暂无首页文档</p>")
+  }
+  let doc_list = storage.list()
+  @app.home_input(title, doc_html, doc_list)
 }
 
 ///|

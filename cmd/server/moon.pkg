@@ -1,6 +1,5 @@
 import {
   "moonbit-community/rabbita",
-  "moonbit-community/rabbita/server" @rserver,
   "hackwaly/moonback",
   "hackwaly/moonback/middlewares/unstable_static" @static,
   "moonbitlang/async",
