@@ -858,20 +858,13 @@ pub fn app() -> Val[Html] {
         },
       ])
     }
-    let active_title = if model.active_slug.is_empty() {
-      "阅读文档"
-    } else if model.active_title.is_empty() {
-      model.active_slug
-    } else {
-      model.active_title
-    }
     let workspace_view = div(class="workspace", [
       div(class="sidebar", [
         details(open=true, class="sidebar-group", [
           summary("导航"),
           ul([
             li([a(href="/", escape=true, "首页")]),
-            li([a(href="/feed", escape=true, "最近更新")]),
+            li([a(href="/feed", escape=true, "RSS 订阅")]),
             li([a(href="/llms.txt", escape=true, "LLM 文档索引")]),
           ]),
         ]),
@@ -911,7 +904,6 @@ pub fn app() -> Val[Html] {
           },
           a(class="wiki-tab", href="#history", escape=true, "查看历史"),
         ]),
-        h2(active_title),
         editor,
       ]),
     ])
