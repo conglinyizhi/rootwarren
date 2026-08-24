@@ -36,7 +36,9 @@ test "rewrite_wiki_links resolves relative links" {
 test "rewrite_wiki_links keeps absolute and external links" {
   let html = "<a href=\"/api/v1/docs\">api</a><a href=\"https://x.com\">ext</a><a href=\"#top\">a</a>"
   let out = @rootwarren.rewrite_wiki_links(html, "index")
-  assert_eq(out, "<a href=\"/api/v1/docs\">api</a><a href=\"https://x.com\">ext</a><a href=\"#top\">a</a>")
+  assert_eq(
+    out, "<a href=\"/api/v1/docs\">api</a><a href=\"https://x.com\">ext</a><a href=\"#top\">a</a>",
+  )
 }
 
 ///|
