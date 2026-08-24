@@ -43,6 +43,7 @@ pub enum Msg {
   SelectDoc(String)
   SetQuery(String)
   Logout
+  LoggedOut
   Edit
   SetContent(String)
   Save
@@ -50,7 +51,7 @@ pub enum Msg {
   ConfigLoaded(String)
   DocsLoaded(Result[String, Error])
   DocLoaded(String, Result[String, Error])
-  MeLoaded(String)
+  MeLoaded(Result[String, Error])
   SaveDone(Result[String, Error])
   DeleteDone(Result[String, Error])
   // 后台管理
@@ -82,12 +83,14 @@ pub struct Model {
   active_slug : String
   active_title : String
   active_html : String
+  active_md : String
   query : String
   status : String
   busy : Bool
   loaded : Bool
   // 认证与编辑
   authed : Bool
+  can_edit : Bool
   editing : Bool
   content : String
   // 后台管理
@@ -141,11 +144,13 @@ pub fn initial_model() -> Model {
     active_slug: "",
     active_title: "",
     active_html: "",
+    active_md: "",
     query: "",
     status: "",
     busy: false,
     loaded: false,
     authed: false,
+    can_edit: false,
     editing: false,
     content: "",
     admin_view: false,
@@ -193,6 +198,19 @@ fn parse_html(raw : String) -> String {
 }
 
 ///|
+fn parse_content(raw : String) -> String {
+  let json = @json.parse(raw) catch { _ => return "" }
+  match json {
+    Json::Object(map) =>
+      match map.get("content") {
+        Some(Json::String(md)) => md
+        _ => ""
+      }
+    _ => ""
+  }
+}
+
+///|
 fn parse_title(raw : String) -> String {
   let json = @json.parse(raw) catch { _ => return "mbt-mdwiki" }
   match json {
@@ -202,6 +220,20 @@ fn parse_title(raw : String) -> String {
         _ => "mbt-mdwiki"
       }
     _ => "mbt-mdwiki"
+  }
+}
+
+///|
+fn parse_can_edit(raw : String) -> Bool {
+  let json = @json.parse(raw) catch { _ => return false }
+  match json {
+    Json::Object(map) =>
+      match map.get("can_edit") {
+        Some(True) => true
+        Some(False) => false
+        _ => false
+      }
+    _ => false
   }
 }
 
@@ -323,16 +355,7 @@ fn load_docs_cmd(emit : Emit[Msg]) -> Cmd {
         )
       }),
     ),
-    @http.get("/api/auth/me").expect_text(
-      emit.map(result => {
-        MeLoaded(
-          match result {
-            Ok(_) => "authed"
-            Err(_) => "anon"
-          },
-        )
-      }),
-    ),
+    @http.get("/api/auth/me").expect_text(emit.map(result => MeLoaded(result))),
   ])
 }
 
@@ -366,11 +389,13 @@ pub fn update(model : Model, msg : Msg, emit : Emit[Msg]) -> (Model, Cmd) {
       (
         { ..model, busy: true, status: "正在退出……" },
         @http.post("/api/auth/logout").expect_text(
-          emit.map(_result => MeLoaded("anon")),
+          emit.map(_result => LoggedOut),
         ),
       )
+    LoggedOut =>
+      ({ ..model, busy: false, authed: false, can_edit: false }, @rabbita.none)
     Edit =>
-      ({ ..model, editing: true, content: model.active_html }, @rabbita.none)
+      ({ ..model, editing: true, content: model.active_md }, @rabbita.none)
     SetContent(content) => ({ ..model, content, }, @rabbita.none)
     Save =>
       (
@@ -416,6 +441,10 @@ pub fn update(model : Model, msg : Msg, emit : Emit[Msg]) -> (Model, Cmd) {
             Ok(raw) => parse_html(raw)
             Err(_) => ""
           },
+          active_md: match result {
+            Ok(raw) => parse_content(raw)
+            Err(_) => ""
+          },
           active_title: match result {
             Ok(raw) => parse_title(raw)
             Err(_) => slug
@@ -435,8 +464,19 @@ pub fn update(model : Model, msg : Msg, emit : Emit[Msg]) -> (Model, Cmd) {
         },
         @rabbita.none,
       )
-    MeLoaded(kind) =>
-      ({ ..model, authed: kind == "authed", busy: false }, @rabbita.none)
+    MeLoaded(result) =>
+      (
+        {
+          ..model,
+          authed: result is Ok(_),
+          can_edit: match result {
+            Ok(raw) => parse_can_edit(raw)
+            Err(_) => false
+          },
+          busy: false,
+        },
+        @rabbita.none,
+      )
     SaveDone(result) =>
       (
         {
@@ -807,11 +847,15 @@ pub fn app() -> Val[Html] {
             .inner_html(model.active_html),
           @html.nothing,
         ),
-        button(
-          on_click=emit(Edit),
-          attrs=@html.Attrs::build().data_set("name", "edit-button"),
-          "编辑",
-        ),
+        if model.can_edit {
+          button(
+            on_click=emit(Edit),
+            attrs=@html.Attrs::build().data_set("name", "edit-button"),
+            "编辑",
+          )
+        } else {
+          @html.nothing
+        },
       ])
     }
     let active_title = if model.active_slug.is_empty() {
@@ -855,12 +899,16 @@ pub fn app() -> Val[Html] {
       div(class="editor-panel", [
         div(class="wiki-tabs", [
           span(class="wiki-tab active", "阅读"),
-          button(
-            class="wiki-tab",
-            on_click=emit(Edit),
-            attrs=@html.Attrs::build().data_set("name", "edit-tab"),
-            "编辑",
-          ),
+          if model.can_edit {
+            button(
+              class="wiki-tab",
+              on_click=emit(Edit),
+              attrs=@html.Attrs::build().data_set("name", "edit-tab"),
+              "编辑",
+            )
+          } else {
+            @html.nothing
+          },
           a(class="wiki-tab", href="#history", escape=true, "查看历史"),
         ]),
         h2(active_title),

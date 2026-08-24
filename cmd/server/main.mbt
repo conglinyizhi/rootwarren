@@ -62,7 +62,12 @@ async fn main {
     })
     ctx.get("/api/auth/me", (req, res) => {
       match auth.authenticate(req) {
-        Some(subject) => res.send_json({ "subject": Json::string(subject) })
+        Some(subject) =>
+          res.send_json({
+            "subject": Json::string(subject),
+            "role": Json::string(auth.session_role(req)),
+            "can_edit": Json::boolean(auth.can_edit(req)),
+          })
         None =>
           res.send_json({ "error": Json::string("unauthorized") }, status=401)
       }
@@ -433,6 +438,7 @@ async fn main {
           res.send_json({
             "slug": Json::string(slug),
             "html": Json::string(html),
+            "content": Json::string(raw),
             "category": Json::string(dm.category),
             "status": Json::string(dm.status),
           })
