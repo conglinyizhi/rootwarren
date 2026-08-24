@@ -97,6 +97,7 @@ pub fn extract_link_slugs(html : String) -> Array[String] {
   acc
 }
 
+///|
 /// 从 `/d/` 之后的字符串提取一个 slug 片段。
 fn take_slug(s : String) -> String {
   let sb = StringBuilder()
@@ -104,8 +105,13 @@ fn take_slug(s : String) -> String {
   while i < s.length() {
     match s.get_char(i) {
       Some(c) =>
-        if (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
-          (c >= '0' && c <= '9') || c == '/' || c == '-' || c == '_' || c == '.' {
+        if (c >= 'a' && c <= 'z') ||
+          (c >= 'A' && c <= 'Z') ||
+          (c >= '0' && c <= '9') ||
+          c == '/' ||
+          c == '-' ||
+          c == '_' ||
+          c == '.' {
           sb.write_char(c)
           i += 1
         } else {
@@ -117,6 +123,7 @@ fn take_slug(s : String) -> String {
   sb.to_string()
 }
 
+///|
 /// 把站点内路径（可能含 `./`/`../`/`.md`）归一化为不带前导斜杠的 slug。
 fn resolve_abs(path : String) -> String {
   let p = strip_md(path)
@@ -126,7 +133,9 @@ fn resolve_abs(path : String) -> String {
     if s.is_empty() || s == "." {
       continue
     } else if s == ".." {
-      if parts.length() > 0 { ignore(parts.pop()) }
+      if parts.length() > 0 {
+        ignore(parts.pop())
+      }
     } else {
       parts.push(s)
     }
@@ -134,6 +143,7 @@ fn resolve_abs(path : String) -> String {
   parts.join("/")
 }
 
+///|
 /// 去掉末尾 `.md` 后缀。
 fn strip_md(p : String) -> String {
   if p.has_suffix(".md") {
@@ -143,13 +153,19 @@ fn strip_md(p : String) -> String {
   }
 }
 
+///|
 /// 扫描已渲染 HTML 的所有 `href="..."`，把相对链接重写为 `/d/{slug}`。
 fn rewrite_hrefs(html : String, base_slug : String) -> String {
   recur_rewrite_hrefs(html, base_slug, "")
 }
 
+///|
 /// 递归扫描剩余字符串，累积重写结果。
-fn recur_rewrite_hrefs(rest : String, base_slug : String, out : String) -> String {
+fn recur_rewrite_hrefs(
+  rest : String,
+  base_slug : String,
+  out : String,
+) -> String {
   let dir = base_dir_of(base_slug)
   match rest.find("href=\"") {
     None => out + rest
@@ -172,12 +188,18 @@ fn recur_rewrite_hrefs(rest : String, base_slug : String, out : String) -> Strin
   }
 }
 
+///|
 /// 根据 dir 目录重写一条 href：站点内相对链接 → `/d/{slug}`，否则保持。
 fn rewrite_one_href(val : String, dir : String) -> String {
-  if val.is_empty() { return val }
-  if val.has_prefix("/") || val.has_prefix("http://") ||
-    val.has_prefix("https://") || val.has_prefix("#") ||
-    val.has_prefix("mailto:") || val.has_prefix("data:") {
+  if val.is_empty() {
+    return val
+  }
+  if val.has_prefix("/") ||
+    val.has_prefix("http://") ||
+    val.has_prefix("https://") ||
+    val.has_prefix("#") ||
+    val.has_prefix("mailto:") ||
+    val.has_prefix("data:") {
     return val
   }
   // 相对链接：基于当前文档目录 dir 解析，再归一化到站点内 slug。
@@ -185,9 +207,14 @@ fn rewrite_one_href(val : String, dir : String) -> String {
   let rel = strip_md(val)
   let full = base + rel
   let slug = resolve_abs(full)
-  if slug.is_empty() { val } else { "/d/" + slug }
+  if slug.is_empty() {
+    val
+  } else {
+    "/d/" + slug
+  }
 }
 
+///|
 /// 取 base_slug 去掉最后一段后的目录前缀（如 `guide/getting-started` → `guide`）。
 fn base_dir_of(base_slug : String) -> String {
   let parts = base_slug.split("/")
@@ -197,7 +224,6 @@ fn base_dir_of(base_slug : String) -> String {
     parts[0:parts.length() - 1].join("/")
   }
 }
-
 
 ///|
 /// 渲染一篇 Markdown 文档为可展示的 HTML 段落（不含页面骨架）。

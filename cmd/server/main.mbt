@@ -345,7 +345,7 @@ async fn main {
           return
         }
       }
-      let page = render_doc_page(storage, meta, auth, req, slug)
+      let page = render_doc_page(storage, meta, slug)
       res.send_html(@moonback.Html::raw(page))
     })
     // Typecho 式文章固定链接别名（/posts/{slug}），与 /d/{slug} 渲染一致
@@ -361,7 +361,7 @@ async fn main {
           return
         }
       }
-      let page = render_doc_page(storage, meta, auth, req, slug)
+      let page = render_doc_page(storage, meta, slug)
       res.send_html(@moonback.Html::raw(page))
     })
 
@@ -464,7 +464,10 @@ async fn main {
         return
       }
       let sources = meta.backlinks(slug)
-      res.send_json({ "slug": Json::string(slug), "backlinks": Json::array(sources.map(Json::string)) })
+      res.send_json({
+        "slug": Json::string(slug),
+        "backlinks": Json::array(sources.map(Json::string)),
+      })
     })
 
     ctx.add_route(@http.RequestMethod::Put, "/api/v1/docs/*slug", (req, res) => {
@@ -708,8 +711,6 @@ async fn site_show_tree(meta : @lib.JsonMeta) -> Bool {
 async fn render_doc_page(
   storage : @lib.LocalStorage,
   meta : @lib.JsonMeta,
-  auth : AuthState,
-  req : @moonback.Request,
   slug : String,
 ) -> String {
   match storage.read(slug) {
@@ -743,11 +744,6 @@ async fn render_doc_page(
         ""
       }
       let breadcrumb = build_breadcrumb(product_name, slug, doc.title)
-      let edit_link = if auth.can_edit(req) {
-        "<a href=\"/edit\">进入编辑器</a>"
-      } else {
-        ""
-      }
       let sources = meta.backlinks(slug)
       let backlinks_html = if sources.is_empty() {
         ""
@@ -765,9 +761,7 @@ async fn render_doc_page(
       product_name +
       "</title><script src=\"/theme.js\"></script><link rel=\"stylesheet\" href=\"/site.css\"></head><body><main class=\"reading-shell\"><div class=\"topbar\"><a href=\"/\">" +
       product_name +
-      "</a><span class=\"account\">" +
-      edit_link +
-      "</span></div><div class=\"breadcrumbs\">" +
+      "</a></div><div class=\"breadcrumbs\">" +
       breadcrumb +
       "</div>" +
       tree +

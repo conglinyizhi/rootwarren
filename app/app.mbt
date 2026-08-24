@@ -847,15 +847,6 @@ pub fn app() -> Val[Html] {
             .inner_html(model.active_html),
           @html.nothing,
         ),
-        if model.can_edit {
-          button(
-            on_click=emit(Edit),
-            attrs=@html.Attrs::build().data_set("name", "edit-button"),
-            "编辑",
-          )
-        } else {
-          @html.nothing
-        },
       ])
     }
     let workspace_view = div(class="workspace", [
@@ -864,7 +855,6 @@ pub fn app() -> Val[Html] {
           summary("导航"),
           ul([
             li([a(href="/", escape=true, "首页")]),
-            li([a(href="/feed", escape=true, "RSS 订阅")]),
             li([a(href="/llms.txt", escape=true, "LLM 文档索引")]),
           ]),
         ]),
@@ -880,7 +870,7 @@ pub fn app() -> Val[Html] {
           summary("工具"),
           ul([
             li([a(href="/api/v1/docs", escape=true, "文档 API")]),
-            li([a(href="/docs/API.md", escape=true, "API 说明")]),
+            li([a(href="/d/api/index", escape=true, "API 说明")]),
             li([a(href="/feed", escape=true, "RSS 订阅")]),
           ]),
         ]),

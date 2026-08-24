@@ -572,7 +572,10 @@ async fn JsonMeta::load_links(self : JsonMeta) -> Map[String, Array[String]] {
 
 ///|
 /// 保存链接台账。
-async fn JsonMeta::save_links(self : JsonMeta, links : Map[String, Array[String]]) -> Unit {
+async fn JsonMeta::save_links(
+  self : JsonMeta,
+  links : Map[String, Array[String]],
+) -> Unit {
   let obj : Map[String, Json] = Map([])
   for k, v in links {
     let arr : Array[Json] = []
@@ -627,7 +630,10 @@ pub async fn JsonMeta::record_links(
 
 ///|
 /// 查询某 target 的链入页面（引用它的文档 slug 列表）。
-pub async fn JsonMeta::backlinks(self : JsonMeta, target : String) -> Array[String] {
+pub async fn JsonMeta::backlinks(
+  self : JsonMeta,
+  target : String,
+) -> Array[String] {
   match self.load_links().get(target) {
     Some(list) => list
     None => []
@@ -636,7 +642,10 @@ pub async fn JsonMeta::backlinks(self : JsonMeta, target : String) -> Array[Stri
 
 ///|
 /// 移除一个源文档在台账中的所有记录（删除文档时调用）。
-pub async fn JsonMeta::remove_source_links(self : JsonMeta, source : String) -> Unit {
+pub async fn JsonMeta::remove_source_links(
+  self : JsonMeta,
+  source : String,
+) -> Unit {
   let links = self.load_links()
   let mut changed = false
   for target, sources in links {
