@@ -1,5 +1,5 @@
 // 独立首页组件：接收服务端注入的数据（文档列表 + index 正文）。
-// 返回完整 <html> 骨架（SSR 需完整结构才可渲染），SSR 与前端 hydrate 共用。
+// 复现原 SPA 首页的双栏布局(左侧文档树侧栏 + 右侧正文)，SSR 与前端 hydrate 共用。
 
 ///|
 pub struct HomeInput {
@@ -39,28 +39,60 @@ pub fn home_page(input~ : HomeInput) -> @rabbita.Val[@html.Html] {
         @html.a(href="/sys/login", "登录"),
       ])
     }
-    // 文档列表
-    let doc_items = @html.ul(
-      model.doc_list.map(fn(s) {
-        @html.li([@html.a(href="/d/" + s, s)])
-      }),
-    )
-    // 首页正文：包进 article 让 site.css 排版生效
+    // 侧栏：折叠分组（导航 / 文档 / 工具）
+    let doc_links = model.doc_list.map(fn(s) {
+      @html.li([@html.a(href="/d/" + s, s)])
+    })
+    let sidebar = @html.div(class="sidebar", [
+      @html.details(open=true, class="sidebar-group", [
+        @html.summary("导航"),
+        @html.ul([
+          @html.li([@html.a(href="/", "首页")]),
+          @html.li([@html.a(href="/llms.txt", "LLM 文档索引")]),
+        ]),
+      ]),
+      @html.details(open=true, class="sidebar-group", [
+        @html.summary("文档"),
+        @html.p(model.doc_list.length().to_string() + " 篇文档"),
+        @html.ul(doc_links),
+      ]),
+      @html.details(class="sidebar-group", [
+        @html.summary("工具"),
+        @html.ul([
+          @html.li([@html.a(href="/api/v1/docs", "文档 API")]),
+          @html.li([@html.a(href="/d/api/index", "API 说明")]),
+          @html.li([@html.a(href="/feed", "RSS 订阅")]),
+        ]),
+      ]),
+      @html.details(class="sidebar-group", [
+        @html.summary("其他页面"),
+        @html.ul([
+          @html.li([@html.a(href="/sys/login", "登录")]),
+        ]),
+      ]),
+    ])
+    // 右侧：正文
     let article = @html.article([
       @html.div(
         attrs=@html.Attrs::build().inner_html(model.doc_html),
         @html.nothing,
       ),
-      @html.h2("文档列表"),
-      doc_items,
     ])
+    let editor_panel = @html.div(class="editor-panel", [
+      @html.div(class="wiki-tabs", [
+        @html.span(class="wiki-tab active", "阅读"),
+      ]),
+      article,
+    ])
+    // 双栏 workspace
+    let workspace = @html.div(class="workspace", [sidebar, editor_panel])
     // 页面骨架
     let main = @html.main_(class="reading-shell", [
       @html.div(class="topbar", [
         @html.h1(model.title),
         auth_links,
       ]),
-      article,
+      workspace,
     ])
     @html.html([
       @html.head([
