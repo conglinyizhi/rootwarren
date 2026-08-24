@@ -285,7 +285,7 @@ pub async fn JsonMeta::create_category(
       }
     }) +
     1
-  categories.push({ id: next_id, name, slug, parent_id, description })
+  categories.push({ id: next_id, name, slug, parent_id, description, })
   self.save_categories(categories)
   true
 }

@@ -120,7 +120,7 @@ async fn category_list(
       "" => slug
       n => n
     }
-    result.push({ slug, name, count })
+    result.push({ slug, name, count, })
   }
   result
 }

@@ -49,7 +49,7 @@ pub fn AdminTokenProvider::from_hash(
   username : String,
   key_hash : String,
 ) -> AdminTokenProvider {
-  { username, key_hash }
+  { username, key_hash, }
 }
 
 ///|

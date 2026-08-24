@@ -188,16 +188,16 @@ pub async fn AuthState::docs_auth(
               None => scopes = ""
             }
           }
-          return { scopes, read_prefix, write_prefix }
+          return { scopes, read_prefix, write_prefix, }
         }
-        None => return { scopes: "", read_prefix: "", write_prefix: "" }
+        None => return { scopes: "", read_prefix: "", write_prefix: "", }
       }
     }
   }
   // 2. cookie session（JWT）
   match self.authenticate(req) {
     Some(subject) if subject == "admin" =>
-      return { scopes: "read,write", read_prefix: "", write_prefix: "" }
+      return { scopes: "read,write", read_prefix: "", write_prefix: "", }
     Some(subject) =>
       match self.subjects.get(subject) {
         Some(user) => {
@@ -208,7 +208,7 @@ pub async fn AuthState::docs_auth(
           } else {
             user.role
           }
-          return { scopes, read_prefix: "", write_prefix: user.write_prefix }
+          return { scopes, read_prefix: "", write_prefix: user.write_prefix, }
         }
         None => ()
       }
@@ -216,9 +216,9 @@ pub async fn AuthState::docs_auth(
   }
   // 3. 公开站点：匿名可读（site.public=true）
   if site_is_public(meta) {
-    return { scopes: "read", read_prefix: "", write_prefix: "" }
+    return { scopes: "read", read_prefix: "", write_prefix: "", }
   }
-  { scopes: "", read_prefix: "", write_prefix: "" }
+  { scopes: "", read_prefix: "", write_prefix: "", }
 }
 
 ///|

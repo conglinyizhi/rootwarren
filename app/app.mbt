@@ -450,7 +450,7 @@ pub fn update(model : Model, msg : Msg, emit : Emit[Msg]) -> (Model, Cmd) {
   match msg {
     Init =>
       (
-        { ..model, loaded: true, busy: true, status: "正在加载……" },
+        { ..model, loaded: true, busy: true, status: "正在加载……", },
         @rabbita.batch([
           load_docs_cmd(emit),
           @http.get("/api/v1/docs/index").expect_text(
@@ -473,27 +473,27 @@ pub fn update(model : Model, msg : Msg, emit : Emit[Msg]) -> (Model, Cmd) {
     SetQuery(query) => ({ ..model, query, }, @rabbita.none)
     Logout =>
       (
-        { ..model, busy: true, status: "正在退出……" },
+        { ..model, busy: true, status: "正在退出……", },
         @http.post("/api/auth/logout").expect_text(
           emit.map(_result => LoggedOut),
         ),
       )
     LoggedOut =>
-      ({ ..model, busy: false, authed: false, can_edit: false }, @rabbita.none)
+      ({ ..model, busy: false, authed: false, can_edit: false, }, @rabbita.none)
     Edit =>
-      ({ ..model, editing: true, content: model.active_md }, @rabbita.none)
-    CancelEdit => ({ ..model, editing: false }, @rabbita.none)
+      ({ ..model, editing: true, content: model.active_md, }, @rabbita.none)
+    CancelEdit => ({ ..model, editing: false, }, @rabbita.none)
     SetContent(content) => ({ ..model, content, }, @rabbita.none)
     Save =>
       (
-        { ..model, busy: true, status: "正在保存……" },
+        { ..model, busy: true, status: "正在保存……", },
         @http.put("/api/v1/docs/" + model.active_slug)
         .with_text(model.content)
         .expect_text(emit.map(result => SaveDone(result))),
       )
     Delete =>
       (
-        { ..model, busy: true, status: "正在删除……" },
+        { ..model, busy: true, status: "正在删除……", },
         @http.delete("/api/v1/docs/" + model.active_slug).expect_text(
           emit.map(result => DeleteDone(result)),
         ),
@@ -614,8 +614,8 @@ pub fn update(model : Model, msg : Msg, emit : Emit[Msg]) -> (Model, Cmd) {
           ),
         ]),
       )
-    HideAdmin => ({ ..model, admin_view: false }, @rabbita.none)
-    SetTheme(t) => ({ ..model, theme: t }, @rabbita.none)
+    HideAdmin => ({ ..model, admin_view: false, }, @rabbita.none)
+    SetTheme(t) => ({ ..model, theme: t, }, @rabbita.none)
     AdminUsersLoaded(result) =>
       (
         {
@@ -643,10 +643,10 @@ pub fn update(model : Model, msg : Msg, emit : Emit[Msg]) -> (Model, Cmd) {
         },
         @rabbita.none,
       )
-    SetSiteTitle(t) => ({ ..model, site_title_input: t }, @rabbita.none)
+    SetSiteTitle(t) => ({ ..model, site_title_input: t, }, @rabbita.none)
     SaveSite =>
       (
-        { ..model, busy: true, status: "正在保存站点设置……" },
+        { ..model, busy: true, status: "正在保存站点设置……", },
         @http.post("/api/admin/site")
         .with_json(SitePayload::{
           title: model.site_title_input,
@@ -694,13 +694,13 @@ pub fn update(model : Model, msg : Msg, emit : Emit[Msg]) -> (Model, Cmd) {
         },
         @rabbita.none,
       )
-    SetKeyName(n) => ({ ..model, key_name: n }, @rabbita.none)
-    SetKeyScopes(s) => ({ ..model, key_scopes: s }, @rabbita.none)
-    SetKeyReadPrefix(p) => ({ ..model, key_read_prefix: p }, @rabbita.none)
-    SetKeyWritePrefix(p) => ({ ..model, key_write_prefix: p }, @rabbita.none)
+    SetKeyName(n) => ({ ..model, key_name: n, }, @rabbita.none)
+    SetKeyScopes(s) => ({ ..model, key_scopes: s, }, @rabbita.none)
+    SetKeyReadPrefix(p) => ({ ..model, key_read_prefix: p, }, @rabbita.none)
+    SetKeyWritePrefix(p) => ({ ..model, key_write_prefix: p, }, @rabbita.none)
     CreateKey =>
       (
-        { ..model, busy: true, status: "正在创建 API key……" },
+        { ..model, busy: true, status: "正在创建 API key……", },
         @http.post("/api/admin/keys")
         .with_json(KeyPayload::{
           name: model.key_name,
@@ -729,14 +729,14 @@ pub fn update(model : Model, msg : Msg, emit : Emit[Msg]) -> (Model, Cmd) {
       )
     RevokeKey(id) =>
       (
-        { ..model, busy: true, status: "正在吊销密钥……" },
+        { ..model, busy: true, status: "正在吊销密钥……", },
         @http.post("/api/admin/keys/revoke")
         .with_json(KeyRevokePayload::{ id, })
         .expect_text(emit.map(_result => KeysTouched)),
       )
     KeysTouched =>
       (
-        { ..model, busy: false, status: "密钥已更新。" },
+        { ..model, busy: false, status: "密钥已更新。", },
         refresh_keys_cmd(emit),
       )
     KeysRefreshed(result) =>
@@ -753,12 +753,12 @@ pub fn update(model : Model, msg : Msg, emit : Emit[Msg]) -> (Model, Cmd) {
       )
     ToggleUserEnabled(id) =>
       (
-        { ..model, busy: true, status: "正在更新用户……" },
+        { ..model, busy: true, status: "正在更新用户……", },
         toggle_user_cmd(emit, id, model.users),
       )
     UsersTouched =>
       (
-        { ..model, busy: false, status: "用户已更新。" },
+        { ..model, busy: false, status: "用户已更新。", },
         refresh_users_cmd(emit),
       )
     UsersRefreshed(result) =>
@@ -774,7 +774,7 @@ pub fn update(model : Model, msg : Msg, emit : Emit[Msg]) -> (Model, Cmd) {
         @rabbita.none,
       )
     KeyCopied =>
-      ({ ..model, status: "密钥已复制到剪贴板。" }, @rabbita.none)
+      ({ ..model, status: "密钥已复制到剪贴板。", }, @rabbita.none)
   }
 }
 
