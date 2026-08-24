@@ -73,7 +73,9 @@ async fn render_doc_page(
       "</article></main></body></html>"
     }
     None =>
-      "<!doctype html><html><head><meta charset=\"utf-8\"><title>文档不存在</title></head><body><p>文档不存在</p></body></html>"
+      "<!doctype html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>文档不存在</title><script src=\"/theme.js\"></script><link rel=\"stylesheet\" href=\"/site.css\"></head><body><main class=\"reading-shell\"><div class=\"topbar\"><a href=\"/\">" +
+      site_product_name(meta) +
+      "</a></div><div class=\"not-found\"><h1>404</h1><p>文档不存在。</p><p><a href=\"/\">返回文档站首页</a></p></div></main></body></html>"
   }
 }
 
