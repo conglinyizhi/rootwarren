@@ -24,8 +24,9 @@ async fn main {
     // 静态资源：rabbit page_service 会引用 /styles.css 与 /index.js
     ctx.add_middleware(@static.new(root="public"))
     // 首页：用 home_page 组件 SSR（服务端渲染 index 文档 + 文档列表，便于 SEO/Agent 直接读）
-    ctx.get("/", (_req, res) => {
-      let input = build_home_input(storage, meta)
+    ctx.get("/", (req, res) => {
+      let authed = auth.authenticate(req) is Some(_)
+      let input = build_home_input(storage, meta, authed)
       let page = @rabbita.new(fn() { @app.home_page(input = input) })
       let html = page.render(url = "http://127.0.0.1/", timeout = 5000)
       res.send_html(@moonback.Html::raw(html))
@@ -50,6 +51,7 @@ async fn main {
 async fn build_home_input(
   storage : @lib.LocalStorage,
   meta : @lib.JsonMeta,
+  authed : Bool,
 ) -> @app.HomeInput {
   let (title, doc_html) = match storage.read("index") {
     Some(raw) => {
@@ -59,7 +61,7 @@ async fn build_home_input(
     None => ("rootwarren", "<p>暂无首页文档</p>")
   }
   let doc_list = storage.list()
-  @app.home_input(title, doc_html, doc_list)
+  @app.home_input(title, doc_html, doc_list, authed)
 }
 
 ///|

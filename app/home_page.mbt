@@ -6,6 +6,7 @@ pub struct HomeInput {
   title : String
   doc_html : String
   doc_list : Array[String]
+  authed : Bool
 } derive(Eq)
 
 ///|
@@ -14,8 +15,9 @@ pub fn home_input(
   title : String,
   doc_html : String,
   doc_list : Array[String],
+  authed : Bool,
 ) -> HomeInput {
-  { title, doc_html, doc_list }
+  { title, doc_html, doc_list, authed }
 }
 
 ///|
@@ -31,10 +33,21 @@ pub fn home_page(input~ : HomeInput) -> @rabbita.Val[@html.Html] {
         @html.li([@html.a(href="/d/" + s, s)])
       }),
     )
+    let auth_links = if model.authed {
+      @html.div(class="auth-bar", [
+        @html.a(href="/sys/admin", "进入管理面板"),
+        @html.a(href="/sys/login", "退出"),
+      ])
+    } else {
+      @html.div(class="auth-bar", [
+        @html.a(href="/sys/login", "登录"),
+      ])
+    }
     let content = @html.div(
       attrs=@html.Attrs::build().class("home-page"),
       [
         @html.h1(model.title),
+        auth_links,
         @html.div(
           attrs=@html.Attrs::build().inner_html(model.doc_html),
           @html.nothing,
