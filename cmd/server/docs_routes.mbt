@@ -6,6 +6,7 @@ async fn render_doc_page(
   storage : @lib.LocalStorage,
   meta : @lib.JsonMeta,
   slug : String,
+  show_edit : Bool,
 ) -> String {
   match storage.read(slug) {
     Some(raw) => {
@@ -55,7 +56,13 @@ async fn render_doc_page(
       product_name +
       "</title><script src=\"/theme.js\"></script><link rel=\"stylesheet\" href=\"/site.css\"></head><body><main class=\"reading-shell\"><div class=\"topbar\"><a href=\"/\">" +
       product_name +
-      "</a></div><div class=\"breadcrumbs\">" +
+      "</a>" +
+      (if show_edit {
+        "<span class=\"account\"><a href=\"/d/" + slug + "?edit\">编辑</a></span>"
+      } else {
+        ""
+      }) +
+      "</div><div class=\"breadcrumbs\">" +
       breadcrumb +
       "</div>" +
       tree +
@@ -68,6 +75,45 @@ async fn render_doc_page(
     None =>
       "<!doctype html><html><head><meta charset=\"utf-8\"><title>文档不存在</title></head><body><p>文档不存在</p></body></html>"
   }
+}
+
+///|
+/// 渲染编辑页（/d/{slug}?edit=1）：textarea 填 Markdown 原文 + 保存/取消，内联 JS 保存到 API。
+async fn render_edit_page(
+  storage : @lib.LocalStorage,
+  meta : @lib.JsonMeta,
+  slug : String,
+) -> String {
+  let product_name = site_product_name(meta)
+  let raw = match storage.read(slug) {
+    Some(r) => r
+    None => ""
+  }
+  let dm = @lib.document_meta(raw)
+  let body = dm.body
+  let escaped = body
+    .replace_all(old="&", new="&amp;")
+    .replace_all(old="<", new="&lt;")
+    .replace_all(old=">", new="&gt;")
+    .replace_all(old="\"", new="&quot;")
+  let read_url = "/d/" + slug + "?edit=0"
+  "<!doctype html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>编辑 " +
+  dm.title +
+  " - " +
+  product_name +
+  "</title><script src=\"/theme.js\"></script><link rel=\"stylesheet\" href=\"/site.css\"></head><body><main class=\"reading-shell\"><div class=\"topbar\"><a href=\"/\">" +
+  product_name +
+  "</a><span class=\"account\"><a href=\"/d/" + slug + "\">返回阅读</a></span></div><h1>编辑：" +
+  dm.title +
+  "</h1><textarea id=\"editor\" rows=\"24\" style=\"width:100%;font-family:monospace\">" +
+  escaped +
+  "</textarea><div class=\"editor-actions\"><button id=\"save\">保存</button><button id=\"cancel\">取消</button><span id=\"msg\"></span></div></main><script>(function(){var e=document.getElementById('editor'),m=document.getElementById('msg');document.getElementById('save').onclick=function(){fetch('/api/v1/docs/" +
+  slug +
+  "',{method:'PUT',headers:{'Content-Type':'text/markdown'},body:e.value}).then(function(r){if(r.ok){m.textContent='已保存，跳转中…';location.href='/d/" +
+  slug +
+  "'}else{m.textContent='保存失败'}})};document.getElementById('cancel').onclick=function(){location.href='/d/" +
+  slug +
+  "'}})()</script></body></html>"
 }
 
 ///|
@@ -227,7 +273,15 @@ fn register_docs_routes(
       }
       return
     }
-    let page = render_doc_page(storage, meta, slug)
+    // 编辑意图：URL 带 ?edit 且用户有编辑权限 → 渲染可编辑文本框
+    let edit_intent = req.query().has("edit")
+    if edit_intent && auth.can_edit(req) {
+      let page = render_edit_page(storage, meta, slug)
+      res.send_html(@moonback.Html::raw(page))
+      return
+    }
+    let show_edit = auth.can_edit(req)
+    let page = render_doc_page(storage, meta, slug, show_edit)
     res.send_html(@moonback.Html::raw(page))
   })
   // Typecho 式文章固定链接别名（/posts/{slug}），与 /d/{slug} 渲染一致
@@ -243,7 +297,8 @@ fn register_docs_routes(
         return
       }
     }
-    let page = render_doc_page(storage, meta, slug)
+    let show_edit = auth.can_edit(req)
+    let page = render_doc_page(storage, meta, slug, show_edit)
     res.send_html(@moonback.Html::raw(page))
   })
 
