@@ -9,6 +9,8 @@
 - 浏览器端是共享 full-rabbita 组件，由服务端 SSR 渲染、客户端水合。
 - 提供受保护的 REST API 供 LLM 与其他客户端读写；文档间的链接关系维护在 `meta/links.json`（反向台账），支持链入页面。
 
+> 请注意，该项目仍然在开发阶段中，请不要将其投入生产使用
+
 ## 架构
 
 ```
@@ -68,6 +70,15 @@ moon fmt             # 格式化
 
 > 注意：`meta/`、`public/index.js`、`.env` 等本地/生成物已 gitignore，不会发布。
 
+## 开源与许可
+
+本项目采用 [Apache-2.0](LICENSE) 许可，代码与 CSS 样式均为独立实现
+
+部分功能呈现效果参考：
+
+- [Typecho](https://github.com/typecho/typecho)
+- [MediaWiki](https://www.mediawiki.org/)
+
 ## 登录与配置
 
 后端登录凭据由 `.env` 提供（`ADMIN_TOKEN`=初始密码，用户名固定 `operator`）。`.env` 是 gitignored 的本地配置。
@@ -84,11 +95,11 @@ make run
 
 配置说明：
 
-| 键 | 含义 |
-| --- | --- |
-| `ADMIN_TOKEN` | 后台初始登录密码（用户名固定 `operator`），登录后可在后台改为持久密钥 |
-| `MBT_MDWIKI_IP` | `make run` 监听地址 |
-| `PORT` | `make run` 端口（`warren dev` 固定用 4300） |
+| 键              | 含义                                                                  |
+| --------------- | --------------------------------------------------------------------- |
+| `ADMIN_TOKEN`   | 后台初始登录密码（用户名固定 `operator`），登录后可在后台改为持久密钥 |
+| `MBT_MDWIKI_IP` | `make run` 监听地址                                                   |
+| `PORT`          | `make run` 端口（`warren dev` 固定用 4300）                           |
 
 > 环境变量优先于 `.env`：若在 shell 已设置同名变量，则 `.env` 不覆盖它。
 
