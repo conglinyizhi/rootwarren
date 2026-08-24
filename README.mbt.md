@@ -77,6 +77,7 @@ make run
 
 - **阅读**：`/d/{slug}` 服务端渲染阅读页（面包屑 + 文档树 + tags + 产品名 title）；`/` 是 full-rabbita SPA（SSR + 水合）。
 - **类型化内容（Typecho 式）**：文档可设 `status`（public/private/hidden/draft）与 `category`；分类聚合 + `/category/{slug}` 分类页；`/posts/{slug}` 固定链接；`/feed` RSS 2.0 订阅。
+- **文档链接关系**：正文相对链接自动重写为 `/d/{slug}`；`meta/links.json` 维护反向链接台账（`目标 -> 引用它的文档`），保存/删除文档自动更新；SSR 阅读页展示“链入页面”，并提供 `GET /api/v1/backlinks/{slug}` 查询。
 - **认证**：API key（Bearer，可绑定用户 + 读/写 slug 前缀范围）或 cookie session（浏览器自动携带）。
 - **权限分层**：`superadmin` > `admin` > `write` > `read` > `none`；admin 不能管理 superadmin。
 - **站点设置**：产品名、公开/私有（`site.public`）、文档树、`llms.txt` 三档策略（public/partial/disabled + 前缀过滤）。

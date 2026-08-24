@@ -433,7 +433,7 @@ async fn main {
       }
       match storage.read(slug) {
         Some(raw) => {
-          let html = @lib.render_doc_html(raw)
+          let html = @lib.render_doc_html(raw, slug)
           let dm = @lib.document_meta(raw)
           res.send_json({
             "slug": Json::string(slug),
@@ -447,6 +447,26 @@ async fn main {
           res.send_json({ "error": Json::string("not found") }, status=404)
       }
     })
+    ctx.get("/api/v1/backlinks/*slug", (req, res) => {
+      let perm = auth.docs_auth(meta, req)
+      let slug = match req.params.get("slug") {
+        Some(s) => s.to_owned()
+        None => {
+          res.send_text("missing slug", status=400)
+          return
+        }
+      }
+      if !can_read(perm.scopes) {
+        res.send_json(
+          { "error": Json::string("read permission required") },
+          status=403,
+        )
+        return
+      }
+      let sources = meta.backlinks(slug)
+      res.send_json({ "slug": Json::string(slug), "backlinks": Json::array(sources.map(Json::string)) })
+    })
+
     ctx.add_route(@http.RequestMethod::Put, "/api/v1/docs/*slug", (req, res) => {
       let perm = auth.docs_auth(meta, req)
       let slug = match req.params.get("slug") {
@@ -476,6 +496,10 @@ async fn main {
         _ => false
       }
       if success {
+        // 更新文档链接台账：解析该文档引用的目标并记录。
+        let html = @lib.render_doc_html(content, slug)
+        let targets = @lib.extract_link_slugs(html)
+        meta.record_links(slug, targets)
         res.send_json({ "ok": Json::boolean(true) })
       } else {
         res.send_text("invalid slug", status=400)
@@ -503,6 +527,7 @@ async fn main {
         return
       }
       storage.delete(slug)
+      meta.remove_source_links(slug)
       res.send_json({ "ok": Json::boolean(true) })
     })
   })
@@ -690,7 +715,7 @@ async fn render_doc_page(
   match storage.read(slug) {
     Some(raw) => {
       let doc = @lib.document_meta(raw)
-      let html = @lib.render_doc_html(raw)
+      let html = @lib.render_doc_html(raw, slug)
       let product_name = site_product_name(meta)
       let tags = if doc.tags.is_empty() {
         ""
@@ -723,6 +748,17 @@ async fn render_doc_page(
       } else {
         ""
       }
+      let sources = meta.backlinks(slug)
+      let backlinks_html = if sources.is_empty() {
+        ""
+      } else {
+        let items = sources
+          .map(fn(s) { "<li><a href=\"/d/" + s + "\">" + s + "</a></li>" })
+          .join("")
+        "<div class=\"backlinks\"><strong>链入页面</strong><ul>" +
+        items +
+        "</ul></div>"
+      }
       "<!doctype html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>" +
       doc.title +
       " - " +
@@ -738,6 +774,7 @@ async fn render_doc_page(
       "<article>" +
       html +
       tags +
+      backlinks_html +
       "</article></main></body></html>"
     }
     None =>

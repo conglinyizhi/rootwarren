@@ -188,7 +188,7 @@ category: guide     # classification slug
 # 正文...
 ```
 
-`GET /api/v1/docs/{slug}` returns `slug`, rendered `html`, `category`, and `status`.
+`GET /api/v1/docs/{slug}` returns `slug`, rendered `html`, `content` (raw Markdown), `category`, and `status`.
 
 ## Categories
 
@@ -197,6 +197,16 @@ GET /api/v1/categories          list categories with document counts
 GET /category/{slug}            SSR category page (lists its documents)
 GET /posts/{slug}               SSR permalink alias (same content as /d/{slug})
 ```
+
+## Doc Links & Backlinks
+
+Wiki-internal Markdown links (relative paths, e.g. `guide/getting-started`) are rewritten to absolute `/{slug}` form when rendered, resolving relative to the current document's directory. A link to a document stores a reverse mapping in `meta/links.json` (`target -> [source, ...]`), refreshed when a document is saved or deleted.
+
+```text
+GET /api/v1/backlinks/{slug}     # documents that link to {slug}
+```
+
+Returns `{ "slug": ..., "backlinks": ["source_slug", ...] }`. Requires `read` scope. SSR reading pages also render a "链入页面" (backlinks) section.
 
 ## RSS / Atom
 

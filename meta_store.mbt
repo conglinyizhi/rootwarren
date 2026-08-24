@@ -36,6 +36,11 @@ fn JsonMeta::categories_path(self : JsonMeta) -> String {
 }
 
 ///|
+fn JsonMeta::links_path(self : JsonMeta) -> String {
+  self.dir + "/links.json"
+}
+
+///|
 async fn JsonMeta::load_config(self : JsonMeta) -> Map[String, String] {
   let path = self.config_path()
   guard @fs.exists(path) else { return {} }
@@ -536,4 +541,117 @@ pub async fn JsonMeta::revoke_api_key(self : JsonMeta, id : Int) -> Unit {
     }
   }
   self.save_api_keys(keys)
+}
+
+// ---- 文档链接台账（meta/links.json） ----
+// 结构：{ "target_slug": ["source_slug", ...] }
+
+///|
+/// 加载链接台账：返回 `target -> 引用它的文档 slug 列表`。
+async fn JsonMeta::load_links(self : JsonMeta) -> Map[String, Array[String]] {
+  let path = self.links_path()
+  guard @fs.exists(path) else { return Map([]) }
+  let content = @utf8.decode_lossy(@fs.read_file(path).binary()[:])
+  let json = @json.parse(content) catch { _ => return Map([]) }
+  let result : Map[String, Array[String]] = Map([])
+  if json is Object(o) {
+    for k, v in o {
+      if v is Array(arr) {
+        let list : Array[String] = []
+        for item in arr {
+          if item is String(s) {
+            list.push(s)
+          }
+        }
+        result[k] = list
+      }
+    }
+  }
+  result
+}
+
+///|
+/// 保存链接台账。
+async fn JsonMeta::save_links(self : JsonMeta, links : Map[String, Array[String]]) -> Unit {
+  let obj : Map[String, Json] = Map([])
+  for k, v in links {
+    let arr : Array[Json] = []
+    for s in v {
+      arr.push(Json::string(s))
+    }
+    obj[k] = Json::array(arr)
+  }
+  let encoded = Json::object(obj).stringify(indent=2)
+  let tmp = self.links_path() + ".tmp"
+  @fs.write_file(tmp, encoded)
+  @fs.rename(tmp, self.links_path(), replace=true)
+}
+
+///|
+/// 把一个源文档「引用的目标列表」写进台账。
+/// 先移除该源文档的旧记录（避免残留），再写入新的 target -> source 反向映射。
+pub async fn JsonMeta::record_links(
+  self : JsonMeta,
+  source : String,
+  targets : Array[String],
+) -> Unit {
+  let links = self.load_links()
+  // 先移除 source 在所有 target 中的旧记录
+  for target, sources in links {
+    if sources.contains(source) {
+      let kept : Array[String] = []
+      for s in sources {
+        if s != source {
+          kept.push(s)
+        }
+      }
+      links[target] = kept
+    }
+  }
+  // 再写入新的 target -> source
+  for t in targets {
+    if !t.is_empty() && t != source {
+      match links.get(t) {
+        Some(list) =>
+          if !list.contains(source) {
+            let new_list = list
+            new_list.push(source)
+            links[t] = new_list
+          }
+        None => links[t] = [source]
+      }
+    }
+  }
+  self.save_links(links)
+}
+
+///|
+/// 查询某 target 的链入页面（引用它的文档 slug 列表）。
+pub async fn JsonMeta::backlinks(self : JsonMeta, target : String) -> Array[String] {
+  match self.load_links().get(target) {
+    Some(list) => list
+    None => []
+  }
+}
+
+///|
+/// 移除一个源文档在台账中的所有记录（删除文档时调用）。
+pub async fn JsonMeta::remove_source_links(self : JsonMeta, source : String) -> Unit {
+  let links = self.load_links()
+  let mut changed = false
+  for target, sources in links {
+    if sources.contains(source) {
+      let kept : Array[String] = []
+      for s in sources {
+        if s != source {
+          kept.push(s)
+        }
+      }
+      links[target] = kept
+      changed = true
+    }
+  }
+  if changed {
+    self.save_links(links)
+  }
 }
