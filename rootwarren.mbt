@@ -62,7 +62,7 @@ pub fn document_meta(raw : String) -> DocumentMeta {
       category = line[9:].trim().to_owned()
     }
   }
-  { body, title, tags, status, category }
+  { body, title, tags, status, category, }
 }
 
 ///|
@@ -194,12 +194,9 @@ fn rewrite_one_href(val : String, dir : String) -> String {
   if val.is_empty() {
     return val
   }
-  if val.has_prefix("/") ||
-    val.has_prefix("http://") ||
-    val.has_prefix("https://") ||
-    val.has_prefix("#") ||
-    val.has_prefix("mailto:") ||
-    val.has_prefix("data:") {
+  if ["/", "http://", "https://", "#", "mailto:", "data:"].any(fn(p) {
+      val.has_prefix(p)
+    }) {
     return val
   }
   // 相对链接：基于当前文档目录 dir 解析，再归一化到站点内 slug。
