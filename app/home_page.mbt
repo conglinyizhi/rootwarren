@@ -30,12 +30,12 @@ pub fn home_page(input~ : HomeInput) -> @rabbita.Val[@html.Html] {
   state.view(model => {
     // 顶部动作：登录/管理
     let auth_links = if model.authed {
-      @html.div(class="account", [
+      @html.span(class="account", [
         @html.a(href="/sys/admin", "进入管理面板"),
         @html.a(href="/sys/login", "退出"),
       ])
     } else {
-      @html.div(class="account", [
+      @html.span(class="account", [
         @html.a(href="/sys/login", "登录"),
       ])
     }
@@ -89,7 +89,7 @@ pub fn home_page(input~ : HomeInput) -> @rabbita.Val[@html.Html] {
     // 页面骨架
     let main = @html.main_(class="reading-shell", [
       @html.div(class="topbar", [
-        @html.h1(model.title),
+        @html.a(href="/", model.title),
         auth_links,
       ]),
       workspace,

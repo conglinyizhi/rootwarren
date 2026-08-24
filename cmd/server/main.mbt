@@ -70,15 +70,14 @@ async fn build_home_input(
   meta : @lib.JsonMeta,
   authed : Bool,
 ) -> @app.HomeInput {
-  let (title, doc_html) = match storage.read("index") {
-    Some(raw) => {
-      let dm = @lib.document_meta(raw)
-      (dm.title, @lib.render_doc_html(raw, "index"))
-    }
-    None => ("rootwarren", "<p>暂无首页文档</p>")
+  // 顶栏站名用站点配置 title(与阅读/404 一致)；正文用 index 文档自身 title
+  let site_title = site_product_name(meta)
+  let doc_html = match storage.read("index") {
+    Some(raw) => @lib.render_doc_html(raw, "index")
+    None => "<p>暂无首页文档</p>"
   }
   let doc_list = storage.list()
-  @app.home_input(title, doc_html, doc_list, authed)
+  @app.home_input(site_title, doc_html, doc_list, authed)
 }
 
 ///|
