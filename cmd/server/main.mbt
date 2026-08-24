@@ -43,6 +43,7 @@ async fn main {
 
   let app = @moonback.App(api)
   let listener = @moonback.listen(reuse_addr=true, port=port)
+  println("Server is running on http://127.0.0.1:\{port}")
   app.serve(listener)
 }
 
