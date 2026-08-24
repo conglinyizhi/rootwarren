@@ -98,7 +98,7 @@ async fn main {
       }
       let title = match meta.get_config("site.title") {
         Some(v) => v
-        None => "mbt-mdwiki"
+        None => "rootwarren"
       }
       let public = match meta.get_config("site.public") {
         Some(v) => v
@@ -327,7 +327,7 @@ async fn main {
     ctx.get("/api/v1/config", (_req, res) => {
       let product_name = match meta.get_config("site.title") {
         Some(v) if !v.is_empty() => v
-        _ => "mbt-mdwiki"
+        _ => "rootwarren"
       }
       res.send_json({ "title": Json::string(product_name) })
     })
@@ -574,7 +574,7 @@ fn parse_site(body : String) -> SiteConfig {
   match json {
     Json::Object(map) =>
       {
-        title: default_or(map_get_string(map, "title"), "mbt-mdwiki"),
+        title: default_or(map_get_string(map, "title"), "rootwarren"),
         public: default_or(map_get_string(map, "public"), "true"),
         show_tree: default_or(map_get_string(map, "show_tree"), "true"),
         llms_mode: default_or(map_get_string(map, "llms_mode"), "public"),
@@ -587,7 +587,7 @@ fn parse_site(body : String) -> SiteConfig {
 ///|
 fn default_site() -> SiteConfig {
   {
-    title: "mbt-mdwiki",
+    title: "rootwarren",
     public: "true",
     show_tree: "true",
     llms_mode: "public",
@@ -694,7 +694,7 @@ fn parse_port(env : Map[String, String]) -> UInt16 {
 async fn site_product_name(meta : @lib.JsonMeta) -> String {
   match meta.get_config("site.title") {
     Some(v) if !v.is_empty() => v
-    _ => "mbt-mdwiki"
+    _ => "rootwarren"
   }
 }
 
@@ -804,7 +804,7 @@ async fn site_llms_prefixes(meta : @lib.JsonMeta) -> String {
 /// 生成 llms.txt 内容（Markdown 索引）。prefixes 为空时全部收录。
 async fn serve_llms(storage : @lib.LocalStorage, prefixes : String) -> String {
   let output = StringBuilder()
-  output.write_string("# mbt-mdwiki\n\n")
+  output.write_string("# rootwarren\n\n")
   output.write_string("这是一个由 MoonBit 驱动的 Markdown Wiki。\n\n")
   for slug in storage.list() {
     let allowed = prefixes.is_empty() ||

@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build a MoonBit JS web client that lets an operator browse, search, read, edit, create, and delete mbt-mdwiki documents through the existing REST API.
+**Goal:** Build a MoonBit JS web client that lets an operator browse, search, read, edit, create, and delete rootwarren documents through the existing REST API.
 
 **Architecture:** Add a `frontend/` MoonBit package compiled for the JS target. The native HTTP server serves the frontend HTML shell at `/` and the generated `frontend.js` bundle at `/frontend.js`, while the browser client calls the existing `/api/v1/*` API on the same origin. API keys remain browser-session state and are never sent to the server except in the Authorization header for API calls.
 

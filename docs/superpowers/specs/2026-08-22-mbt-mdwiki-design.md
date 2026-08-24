@@ -1,4 +1,4 @@
-# mbt-mdwiki 设计文档
+# rootwarren 设计文档
 
 - 日期：2026-08-22
 - 状态：已确认（brainstorming 完成）
@@ -28,7 +28,7 @@
 
 ```
 ┌────────────────────────────────────────────────────┐
-│  mbt-mdwiki  MoonBit 单二进制                        │
+│  rootwarren  MoonBit 单二进制                        │
 │                                                    │
 │  moonbitlang/async (@http.Server, 原生异步)          │
 │  ┌──────────┬───────────┬──────────┬────────────┐  │

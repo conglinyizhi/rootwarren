@@ -1,6 +1,6 @@
-# mbt-mdwiki Client Design Brief
+# rootwarren Client Design Brief
 
-Use this document when designing a client for `mbt-mdwiki`. The client may be a Web UI, TUI, desktop app, or an agent-managed integration. Do not assume a particular frontend framework.
+Use this document when designing a client for `rootwarren`. The client may be a Web UI, TUI, desktop app, or an agent-managed integration. Do not assume a particular frontend framework.
 
 The product is a **document backend for people and language-model clients**. Markdown in the server's `content/` directory remains the source of truth. A client is a view and control surface over that content; it must not invent a second document database or local canonical copy.
 

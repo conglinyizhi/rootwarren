@@ -198,7 +198,7 @@ pub extend KeyPayload with ToJson::{to_json}
 ///|
 pub fn initial_model() -> Model {
   {
-    title: "mbt-mdwiki",
+    title: "rootwarren",
     slugs: [],
     active_slug: "",
     active_title: "",
@@ -272,14 +272,14 @@ fn parse_content(raw : String) -> String {
 
 ///|
 fn parse_title(raw : String) -> String {
-  let json = @json.parse(raw) catch { _ => return "mbt-mdwiki" }
+  let json = @json.parse(raw) catch { _ => return "rootwarren" }
   match json {
     Json::Object(map) =>
       match map.get("title") {
         Some(Json::String(title)) => title
-        _ => "mbt-mdwiki"
+        _ => "rootwarren"
       }
-    _ => "mbt-mdwiki"
+    _ => "rootwarren"
   }
 }
 
@@ -321,14 +321,14 @@ fn parse_users(raw : String) -> Array[UserInfo] {
 
 ///|
 fn parse_site_title(raw : String) -> String {
-  let json = @json.parse(raw) catch { _ => return "mbt-mdwiki" }
+  let json = @json.parse(raw) catch { _ => return "rootwarren" }
   match json {
     Json::Object(map) =>
       match map.get("title") {
         Some(Json::String(title)) => title
-        _ => "mbt-mdwiki"
+        _ => "rootwarren"
       }
-    _ => "mbt-mdwiki"
+    _ => "rootwarren"
   }
 }
 
@@ -436,7 +436,7 @@ fn load_docs_cmd(emit : Emit[Msg]) -> Cmd {
         ConfigLoaded(
           match result {
             Ok(raw) => parse_title(raw)
-            Err(_) => "mbt-mdwiki"
+            Err(_) => "rootwarren"
           },
         )
       }),

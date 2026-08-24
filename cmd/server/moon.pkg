@@ -10,8 +10,8 @@ import {
   "moonbitlang/core/encoding/utf8",
   "moonbitlang/core/json",
   "moonbitlang/core/string",
-  "conglinyizhi/mbt-mdwiki" @lib,
-  "conglinyizhi/mbt-mdwiki/app",
+  "conglinyizhi/rootwarren" @lib,
+  "conglinyizhi/rootwarren/app",
 }
 
 supported_targets = "native+wasm"

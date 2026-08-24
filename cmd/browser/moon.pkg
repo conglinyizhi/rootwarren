@@ -1,6 +1,6 @@
 import {
   "moonbit-community/rabbita",
-  "conglinyizhi/mbt-mdwiki/app",
+  "conglinyizhi/rootwarren/app",
 }
 
 supported_targets = "js"

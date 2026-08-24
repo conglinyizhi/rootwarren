@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 PORT=${PORT:-18001}
-ADMIN_TOKEN=${ADMIN_TOKEN:-mbt-mdwiki-demo-admin-token}
+ADMIN_TOKEN=${ADMIN_TOKEN:-rootwarren-demo-admin-token}
 BASE_URL="http://127.0.0.1:${PORT}"
 COOKIE_JAR=$(mktemp)
 LOG_FILE=$(mktemp)

@@ -1,5 +1,5 @@
 // Generated using `moon info`, DON'T EDIT IT
-package "conglinyizhi/mbt-mdwiki"
+package "conglinyizhi/rootwarren"
 
 // Values
 pub fn generate_api_key() -> String raise EntropyUnavailable

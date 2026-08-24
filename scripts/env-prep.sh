@@ -44,7 +44,7 @@ fi
 TOKEN="$(openssl rand -hex 16 2>/dev/null || od -An -tx1 -N16 /dev/urandom | tr -d ' \n')"
 
 cat > "$ENV_FILE" <<EOF
-# mbt-mdwiki 本地配置（开发环境自动生成，勿提交到 git）
+# rootwarren 本地配置（开发环境自动生成，勿提交到 git）
 # 后台登录初始密码（用户名固定为 operator，可登录后在后台修改）
 ADMIN_TOKEN=$TOKEN
 # 监听地址（make run 生效；warren dev 固定使用 4300）

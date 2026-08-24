@@ -1,11 +1,13 @@
 ---
-title: mbt-mdwiki Wiki
+title: rootwarren
 tags: wiki, moonbit, agent
 ---
 
-# mbt-mdwiki
+# rootwarren
 
-一个由 MoonBit 驱动的、面向人类与大语言模型的 Markdown Wiki。
+一片面向人类与 Agent 的活文档森林。
+
+一个由 MoonBit 驱动的、面向人类与大语言模型的 Markdown 文档空间。
 
 ## 从这里开始
 

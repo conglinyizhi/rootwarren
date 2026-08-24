@@ -1,4 +1,4 @@
-# mbt-mdwiki REST API
+# rootwarren REST API
 
 Base URL: `http://127.0.0.1:8001`
 
@@ -145,7 +145,7 @@ Authorization: Bearer <key>
 Requires `read`.
 
 ```json
-{"title":"mbt-mdwiki"}
+{"title":"rootwarren"}
 ```
 
 ## Auth Endpoints

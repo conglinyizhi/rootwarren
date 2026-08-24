@@ -1,10 +1,13 @@
-# mbt-mdwiki
+# rootwarren
 
-一个基于 MoonBit 的 **full-rabbita 全栈 Markdown Wiki**。使用 `moonbit-community/rabbita` 完整版（SSR + 前端水合）+ `hackwaly/moonback`（后端 API）构建，前后端共享同一份组件包。
+> **一片面向人类与 Agent 的活文档森林。**
+>
+> rootwarren 是一个由 MoonBit 构建的、文件型 Markdown 文档空间：Markdown 文件是生长出来的树干与枝条，目录是不同枝系，文档之间用链接根系相连。人类在其中阅读与编辑，Agent / LLM 通过受保护的 REST API 进入、检索与写入。
 
+- 基于 `moonbit-community/rabbita` 完整版（SSR + 前端水合）+ `hackwaly/moonback`（后端 API）构建，前后端共享同一份组件包。
 - `content/` 下的 Markdown 文档是数据源（slug 为相对路径去掉 `.md`）。
 - 浏览器端是共享 full-rabbita 组件，由服务端 SSR 渲染、客户端水合。
-- 提供受保护的 REST API 供 LLM 与其他客户端读写。
+- 提供受保护的 REST API 供 LLM 与其他客户端读写；文档间的链接关系维护在 `meta/links.json`（反向台账），支持链入页面。
 
 ## 架构
 

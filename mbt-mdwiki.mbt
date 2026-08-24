@@ -22,7 +22,7 @@ pub fn document_meta(raw : String) -> DocumentMeta {
         None => line.to_owned()
       }
     }
-    None => "mbt-mdwiki"
+    None => "rootwarren"
   }
   if !raw.has_prefix("---\n") {
     return {
@@ -238,6 +238,6 @@ pub fn render_doc_html(raw : String, slug : String) -> String {
 pub fn config_site_title(value : String?) -> String {
   match value {
     Some(v) if !v.is_empty() => v
-    _ => "mbt-mdwiki"
+    _ => "rootwarren"
   }
 }
