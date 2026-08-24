@@ -28,35 +28,40 @@ pub fn home_page(input~ : HomeInput) -> @rabbita.Val[@html.Html] {
     update=fn(model, _msg) { model },
   )
   state.view(model => {
-    let list = @html.ul(
-      model.doc_list.map(fn(s) {
-        @html.li([@html.a(href="/d/" + s, s)])
-      }),
-    )
+    // 顶部动作：登录/管理
     let auth_links = if model.authed {
-      @html.div(class="auth-bar", [
+      @html.div(class="account", [
         @html.a(href="/sys/admin", "进入管理面板"),
         @html.a(href="/sys/login", "退出"),
       ])
     } else {
-      @html.div(class="auth-bar", [
+      @html.div(class="account", [
         @html.a(href="/sys/login", "登录"),
       ])
     }
-    let content = @html.div(
-      attrs=@html.Attrs::build().class("home-page"),
-      [
+    // 文档列表
+    let doc_items = @html.ul(
+      model.doc_list.map(fn(s) {
+        @html.li([@html.a(href="/d/" + s, s)])
+      }),
+    )
+    // 首页正文：包进 article 让 site.css 排版生效
+    let article = @html.article([
+      @html.div(
+        attrs=@html.Attrs::build().inner_html(model.doc_html),
+        @html.nothing,
+      ),
+      @html.h2("文档列表"),
+      doc_items,
+    ])
+    // 页面骨架
+    let main = @html.main_(class="reading-shell", [
+      @html.div(class="topbar", [
         @html.h1(model.title),
         auth_links,
-        @html.div(
-          attrs=@html.Attrs::build().inner_html(model.doc_html),
-          @html.nothing,
-        ),
-        @html.h2("文档列表"),
-        list,
-      ],
-    )
-    let shell = @html.div(class="reading-shell", [content])
+      ]),
+      article,
+    ])
     @html.html([
       @html.head([
         @html.node(
@@ -67,7 +72,7 @@ pub fn home_page(input~ : HomeInput) -> @rabbita.Val[@html.Html] {
         @html.link(rel="stylesheet", href="/site.css"),
         @html.title(model.title),
       ]),
-      @html.body([shell]),
+      @html.body([main]),
     ])
   })
 }
